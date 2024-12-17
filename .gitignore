@@ -1,0 +1,4 @@
+.env
+logs/
+data/raw/
+src/config/secrets.py

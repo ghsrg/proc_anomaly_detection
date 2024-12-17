@@ -1,0 +1,9 @@
+pandas
+numpy
+matplotlib
+tensorflow
+torch
+networkx
+scikit-learn
+pyodbc
+requests

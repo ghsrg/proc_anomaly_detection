@@ -1,0 +1,115 @@
+graph TD
+    subgraph Data
+        RAW["raw"] --> PROCESSED["processed"]
+        PROCESSED --> OUTPUTS["outputs"]
+        OUTPUTS --> ANOMALIES["anomalies"]
+    end
+
+    subgraph Reports
+        REPORTS["reports"]
+    end
+
+    subgraph Core
+        DP["data_processing.py"]:::primary
+        CL["clustering.py"]:::primary
+        GP["graph_processing.py"]
+        AE["autoencoder.py"]
+        GNN["gnn.py"]
+        RT["retraining.py"]
+        Metrics["metrics.py"]
+        Visualizer["visualizer.py"]
+    end
+
+    subgraph Pipelines
+        Preprocess["preprocess_pipeline.py"]:::primary
+        ClusterPipe["clustering_pipeline.py"]:::primary
+        RetrainPipe["retrain_pipeline.py"]:::primary
+        RL_Pipe["reinforcement_pipeline.py"]:::primary
+        EvaluatePipe["evaluate_pipeline.py"]:::primary
+    end
+
+    subgraph Modes
+        ExpMode["experimental_mode.py"]:::secondary
+        AnaMode["analytical_mode.py"]:::secondary
+        ProdMode["production_mode.py"]:::secondary
+    end
+
+    subgraph DataSources
+        MSSQL["mssql_connector.py"]:::primary
+        RESTAPI["rest_api_connector.py"]
+    end
+
+    subgraph Utils
+        Logger["logger.py"]
+        FileUtils["file_utils.py"]
+        ConfigUtils["config_utils.py"]
+        MetricsUtils["metrics.py"]
+        StringUtils["string_utils.py"]
+    end
+
+    subgraph Config
+        GeneralConfig["config.py"]
+        Secrets["secrets.py"]
+        ExpParams["params_experimental.py"]
+        AnaParams["params_analytical.py"]
+    end
+
+    subgraph Tests
+        TestDP["test_data_processing.py"]
+        TestModels["test_models.py"]
+    end
+
+    subgraph Scripts
+        RunExp["run_experimental.py"]
+        RunAna["run_analytical.py"]
+        RunProd["run_production.py"]
+    end
+
+    RAW --> DP
+    DP --> Preprocess
+    Preprocess --> ClusterPipe
+    ClusterPipe --> Visualizer
+    DP --> GP
+    GP --> GNN
+    GP --> RL_Pipe
+    DP --> AE
+    AE --> EvaluatePipe
+    RT --> RetrainPipe
+    Metrics --> EvaluatePipe
+
+    ExpMode --> Preprocess
+    ExpMode --> ClusterPipe
+    ExpMode --> EvaluatePipe
+
+    AnaMode --> ClusterPipe
+    AnaMode --> EvaluatePipe
+
+    ProdMode --> Preprocess
+    ProdMode --> RL_Pipe
+    ProdMode --> RetrainPipe
+
+    MSSQL --> DP
+    RESTAPI --> DP
+
+    Logger --> DP
+    FileUtils --> DP
+    MetricsUtils --> Metrics
+    ConfigUtils --> GeneralConfig
+    StringUtils --> GP
+
+    GeneralConfig --> ExpMode
+    ExpParams --> ExpMode
+    AnaParams --> AnaMode
+    Secrets --> MSSQL
+
+    RunExp --> ExpMode
+    RunAna --> AnaMode
+    RunProd --> ProdMode
+
+    TestDP --> DP
+    TestModels --> AE
+
+    REPORTS --> EvaluatePipe
+
+    classDef primary fill:#6EC3F5,stroke:#333,stroke-width:2px;
+    classDef secondary fill:#F5D76E,stroke:#333,stroke-width:2px;
