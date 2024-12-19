@@ -37,10 +37,11 @@ def execute_query(query: str):
 
     try:
         df = pd.read_sql_query(query, conn)
-        logger.info(f"Запит виконано успішно: {query}")
+        logger.debug(f"Запит виконано успішно: {query}")
         return df
     except Exception as e:
         logger.error(f"Помилка виконання запиту: {e}")
+        logger.error(f"Запит, який викликав помилку: {query}")
         return pd.DataFrame()
     finally:
         conn.close()

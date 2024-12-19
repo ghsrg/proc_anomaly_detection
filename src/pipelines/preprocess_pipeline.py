@@ -31,7 +31,31 @@ def load_and_preprocess_data():
 
     # SQL-запити
     queries = {
-        "ks_dwh_bpm_docs.csv": "SELECT * FROM dbo.ks_dwh_bpm_docs;",
+        "ks_dwh_bpm_docs.csv": """
+            SELECT 
+                doc_id,
+                doc_number,
+                doctype_code,
+                doctype_name,
+                doctype_caption,
+                doc_regnumber,
+                CAST(doc_regdate AS DATETIME) AS doc_regdate,
+                doc_subject,
+                docstate_id,
+                docstate_name,
+                docstate_code,
+                docfld_id,
+                docfld_par_id,
+                docfldr_code,
+                CAST(doc_createdate AS DATETIME) AS doc_createdate,
+                CAST(doc_modifyDate AS DATETIME) AS doc_modifyDate,
+                user_create_login,
+                staff_externalid,
+                CAST(doc_deletedate AS DATETIME) AS doc_deletedate,
+                doc_par_id,
+                doc_labels
+            FROM dbo.ks_dwh_bpm_docs;
+        """,
         "ks_dwh_bpm_tasks.csv": "SELECT * FROM dbo.ks_dwh_bpm_tasks;",
         "ks_dwh_purchase_cxo_rep.csv": "SELECT * FROM dbo.ks_dwh_purchase_cxo_rep;"
     }
