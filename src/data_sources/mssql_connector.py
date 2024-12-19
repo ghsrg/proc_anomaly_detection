@@ -1,48 +1,30 @@
+from sqlalchemy import create_engine
 import pandas as pd
-import pyodbc
 from src.utils.logger import get_logger
-from src.config.secrets import MSSQL_CONFIG
 
 logger = get_logger(__name__)
 
-def get_mssql_connection():
+def execute_query(query, connection_config):
     """
-    Створює підключення до MSSQL бази даних.
-    :return: Об'єкт підключення.
-    """
-    try:
-        conn = pyodbc.connect(
-            f"DRIVER={MSSQL_CONFIG['driver']};"
-            f"SERVER={MSSQL_CONFIG['server']};"
-            f"DATABASE={MSSQL_CONFIG['database']};"
-            f"UID={MSSQL_CONFIG['username']};"
-            f"PWD={MSSQL_CONFIG['password']}"
-        )
-        logger.info("Підключення до MSSQL успішно встановлено.")
-        return conn
-    except Exception as e:
-        logger.error(f"Помилка підключення до MSSQL: {e}")
-        return None
-
-def execute_query(query: str):
-    """
-    Виконує SQL-запит і повертає результат у вигляді DataFrame.
+    Виконує SQL-запит та повертає результат як DataFrame.
     :param query: SQL-запит.
-    :return: DataFrame з результатами.
+    :param connection_config: Конфігурація підключення (BPMS_CONFIG або CAMUNDA_CONFIG).
+    :return: pandas DataFrame з результатами запиту.
     """
-    conn = get_mssql_connection()
-    if not conn:
-        logger.error("З'єднання не було встановлено. Запит не виконано.")
-        return pd.DataFrame()  # Повертаємо пустий DataFrame як універсальну структуру
-
     try:
-        df = pd.read_sql_query(query, conn)
-        logger.debug(f"Запит виконано успішно: {query}")
+        # Створення URI підключення для SQLAlchemy
+        db_uri = (f"mssql+pyodbc://{connection_config['username']}:{connection_config['password']}@"
+                  f"{connection_config['server']}/{connection_config['database']}?driver=ODBC+Driver+17+for+SQL+Server")
+
+        # Створення SQLAlchemy engine
+        engine = create_engine(db_uri)
+        logger.info(f"Підключення до MSSQL ({connection_config['database']}) через SQLAlchemy успішно встановлено.")
+
+        # Виконання запиту
+        df = pd.read_sql_query(query, engine)
+        logger.info("Запит виконано успішно.")
         return df
+
     except Exception as e:
         logger.error(f"Помилка виконання запиту: {e}")
-        logger.error(f"Запит, який викликав помилку: {query}")
         return pd.DataFrame()
-    finally:
-        conn.close()
-        logger.info("Підключення до MSSQL закрито.")

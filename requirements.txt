@@ -1,9 +1,14 @@
-pandas
+pandas~=2.2.3
 numpy
 matplotlib
 tensorflow
 torch
 networkx
 scikit-learn
-pyodbc
-requests
+pyodbc~=5.2.0
+requests~=2.32.3
+
+colorama~=0.4.6
+h5py~=3.12.1
+SQLAlchemy~=2.0.36
+pytest~=8.3.4
