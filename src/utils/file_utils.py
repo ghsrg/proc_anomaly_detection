@@ -2,13 +2,12 @@ import os
 import pandas as pd
 import h5py
 import networkx as nx
+from src.utils.file_utils_l import make_dir, join_path
+from src.utils.logger import get_logger
 
-def ensure_dir_exists(directory):
-    """
-    Перевіряє існування директорії, якщо її немає — створює.
-    """
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+logger = get_logger(__name__)
+
+
 def save_to_parquet(df: pd.DataFrame, file_name: str):
     """
     Зберігає сирі дані у форматі Parquet.
@@ -17,7 +16,7 @@ def save_to_parquet(df: pd.DataFrame, file_name: str):
     """
     raw_data_path = os.path.join("data", "raw", f"{file_name}.parquet")
     df.to_parquet(raw_data_path, engine="pyarrow", index=False)
-    print(f"Дані збережено у {raw_data_path}")
+    logger.info(f"Дані збережено у {raw_data_path}")
 
 def load_raw_data(file_name: str) -> pd.DataFrame:
     """
@@ -27,7 +26,7 @@ def load_raw_data(file_name: str) -> pd.DataFrame:
     """
     raw_data_path = os.path.join("data", "raw", f"{file_name}.parquet")
     df = pd.read_parquet(raw_data_path, engine="pyarrow")
-    print(f"Дані завантажено з {raw_data_path}")
+    logger.info(f"Дані завантажено з {raw_data_path}")
     return df
 
 def save_to_hdf5(data: dict, file_path: str):
@@ -39,7 +38,7 @@ def save_to_hdf5(data: dict, file_path: str):
     with h5py.File(file_path, "w") as f:
         for key, value in data.items():
             f.create_dataset(key, data=value)
-    print(f"Дані збережено у HDF5: {file_path}")
+    logger.info(f"Дані збережено у HDF5: {file_path}")
 
 def read_from_hdf5(file_path: str) -> dict:
     """
@@ -65,11 +64,6 @@ def save_graph(graph, filename, format="graphml"):
     if format not in supported_formats:
         raise ValueError(f"Формат {format} не підтримується. Доступні формати: {supported_formats}")
 
-    # Перевірка та створення папки, якщо необхідно
-    directory = os.path.dirname(filename)
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory)
-
     # Збереження у вибраному форматі
     if format == "graphml":
         nx.write_graphml(graph, filename)
@@ -80,3 +74,18 @@ def save_graph(graph, filename, format="graphml"):
         with open(filename, "w") as f:
             import json
             json.dump(data, f)
+
+
+def save_graphs(process_graph, path):
+    """
+    Зберігає графи у вигляді файлів для кожного процесу.
+    """
+
+    for node, attrs in process_graph.nodes(data=True):
+
+        if attrs.get("type") == "process":
+            graph_file = join_path([path, f"{node}.graphml"])
+            subgraph = nx.ego_graph(process_graph, node)
+            nx.write_graphml(subgraph, graph_file)
+            logger.info(f"Граф процесу {node} збережено у {graph_file}.")
+

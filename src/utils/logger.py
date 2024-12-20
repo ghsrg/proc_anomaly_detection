@@ -1,10 +1,11 @@
 import logging
 from colorama import Fore, Style, init
 from src.config.config import APP_LOG_FILE, ERROR_LOG_FILE, LOG_LEVEL, LOG_TO_SCREEN
+from pprint import pformat
+import networkx as nx
 
 # Ініціалізація colorama
 init(autoreset=True)
-
 
 class ColorFormatter(logging.Formatter):
     """
@@ -24,6 +25,41 @@ class ColorFormatter(logging.Formatter):
         log_message = super().format(record)
         return f"{color}{log_message}{Style.RESET_ALL}"
 
+class CustomLogger(logging.Logger):
+    def debug(self, msg, *args, **kwargs):
+        if not isinstance(msg, str):
+            variable_name = kwargs.pop('variable_name', '<unnamed>')
+            depth = kwargs.pop('depth', None)
+
+            msg_details = [
+                f"Назва змінної: {variable_name}",
+                f"Тип: {type(msg)}"
+            ]
+
+            if hasattr(msg, "__len__"):
+                msg_details.append(f"Кількість елементів: {len(msg)}")
+
+            if isinstance(msg, nx.Graph):
+                graph_info = [
+                    f"Nodes: {len(msg.nodes)}",
+                    f"Edges: {len(msg.edges)}",
+                    f"Sample Nodes: {list(msg.nodes(data=True))[:depth]}",
+                    f"Sample Edges: {list(msg.edges(data=True))[:depth]}"
+                ]
+                msg_details.append("Інформація про граф:\n" + "\n".join(graph_info))
+            else:
+                formatted_value = pformat(msg, indent=4, depth=depth)
+                msg_details.append(f"Значення:\n{formatted_value}")
+
+            msg = "\n".join(msg_details)
+
+        try:
+            super().debug(msg.encode('utf-8').decode('utf-8'), *args)
+        except UnicodeEncodeError:
+            msg = msg.encode('ascii', errors='replace').decode('ascii')
+            super().debug(msg, *args)
+
+
 
 def get_logger(name: str):
     """
@@ -31,6 +67,7 @@ def get_logger(name: str):
     :param name: Назва логера.
     :return: Налаштований логер.
     """
+    logging.setLoggerClass(CustomLogger)
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, LOG_LEVEL))  # Встановлення рівня логування
 

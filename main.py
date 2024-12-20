@@ -4,7 +4,7 @@ from src.modes.experimental_mode import run_experimental_mode
 from src.modes.analytical_mode import run_analytical_mode
 from src.modes.production_mode import run_production_mode
 
-logger = get_logger(__name__)  # Ініціалізація логера
+logger = get_logger(__name__)
 
 def main():
     try:

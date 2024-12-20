@@ -1,6 +1,7 @@
 # Режим виконання
 from src.utils.logger import get_logger
 
+
 logger = get_logger(__name__)
 
 def run_production_mode():
