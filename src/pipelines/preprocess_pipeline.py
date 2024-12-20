@@ -1,4 +1,4 @@
-import os
+#import os
 from src.data_sources.mssql_connector import execute_query
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_to_parquet
@@ -6,8 +6,8 @@ from src.config.secrets import BPMS_CONFIG, CAMUNDA_CONFIG
 
 logger = get_logger(__name__)
 
-RAW_DATA_PATH = os.path.join("data", "raw")
-os.makedirs(RAW_DATA_PATH, exist_ok=True)  # Переконуємося, що папка існує
+#RAW_DATA_PATH = os.path.join("data", "raw")
+#os.makedirs(RAW_DATA_PATH, exist_ok=True)  # Переконуємося, що папка існує
 
 
 def load_camunda_data():
@@ -30,8 +30,8 @@ def load_camunda_data():
     taskinst_query = """
            SELECT  * FROM ACT_HI_ACTINST act;
     """
-    taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
-    save_to_parquet(taskinst_df, "act_hi_taskinst")
+    #taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
+    #save_to_parquet(taskinst_df, "act_hi_taskinst")
 
     # Завантаження BPMN XML
     bpmn_query = """

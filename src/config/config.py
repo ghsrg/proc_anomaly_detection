@@ -35,3 +35,5 @@ make_dir(OUTPUTS_DATA_PATH)
 
 # Шлях до графів
 GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'graphs'])
+
+RAW_PATH = join_path(['data', 'raw'])
