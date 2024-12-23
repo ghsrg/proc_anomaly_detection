@@ -7,15 +7,15 @@ from src.utils.file_utils import read_from_parquet, save_graph
 
 logger = get_logger(__name__)
 
-def select_document_definition(caption_filter=None):
+def select_document_definition(doc_definitions, caption_filter=None):
     """
     Вибір дефініції документа для аналізу на основі значення caption.
     :param caption_filter: Фільтр для вибору дефініції документа.
     :return: ID обраної дефініції документа (id).
     """
     try:
-        #doc_def_path = "data/processed/bpm_doc_def.parquet"
-        doc_definitions = read_from_parquet("bpm_doc_def")
+
+
 
         if caption_filter:
             filtered_defs = doc_definitions[doc_definitions['caption'].str.contains(caption_filter, na=False)]
@@ -35,7 +35,7 @@ def select_document_definition(caption_filter=None):
         logger.error(f"Помилка під час вибору дефініції документа: {e}")
         return None
 
-def get_documents_for_definition(doc_def_id, filter_ids=None):
+def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
     """
     Отримання списку документів на основі обраної дефініції.
     :param doc_def_id: ID дефініції документа.
@@ -46,7 +46,7 @@ def get_documents_for_definition(doc_def_id, filter_ids=None):
             logger.warning("ID дефініції документа не задано.")
             return None
 
-        documents = read_from_parquet("bpm_docs")
+
 
         selected_documents = documents[(documents['doctype_id'] == doc_def_id) & (documents['docstate_code'] != 'new')]
 
@@ -63,7 +63,7 @@ def get_documents_for_definition(doc_def_id, filter_ids=None):
         logger.error(f"Помилка під час отримання документів для дефініції: {e}")
         return None
 
-def get_process_instances(doc_id_list):
+def get_process_instances(doc_id_list, processes):
     """
     Отримання екземплярів процесів для кожного документа.
     :param doc_id_list: Список ID документів.
@@ -74,7 +74,7 @@ def get_process_instances(doc_id_list):
             logger.warning("Список ID документів порожній.")
             return None
 
-        processes = read_from_parquet("bpm_process")
+
         result = {}
 
         for doc_id in doc_id_list:
@@ -165,27 +165,34 @@ def analyze_documents(caption_filter=None):
     """
     logger.info("Запуск аналізу документів...")
 
+    ###########################
     # Вибір дефініції документа
-    doc_def = select_document_definition(caption_filter)
+    doc_definitions = read_from_parquet("bpm_doc_def")
+    doc_def = select_document_definition(doc_definitions, caption_filter)
 
     if doc_def is None:
         logger.warning("Аналіз перервано через відсутність обраної дефініції.")
         return
 
+    ###########################
     # Отримання списку документів для аналізу
-    documents = get_documents_for_definition(doc_def['ID'], [3003643877955])
+    docs = read_from_parquet("bpm_docs")
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003642240662])
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
         return
 
+    ###########################
     # Отримання екземплярів процесів для документів
-    process_instances = get_process_instances(documents['doc_id'].tolist())
+    processes = read_from_parquet("bpm_process")
+    process_instances = get_process_instances(documents['doc_id'].tolist(), processes)
 
     if not process_instances:
         logger.warning("Аналіз перервано через відсутність процесів для обраних документів.")
         return
 
+    ###########################
     # Групування екземплярів процесів за ROOT_PROC_INST_ID_ для кожного документа
     grouped_instances = {}
     camunda_instances = read_from_parquet("ACT_HI_PROCINST")
@@ -195,6 +202,8 @@ def analyze_documents(caption_filter=None):
         if grouped and doc_id in grouped:
             grouped_instances[doc_id] = grouped[doc_id]
 
+    ###########################
+    # додавання до процесу XML BPMN
     bpmn_df = read_from_parquet("bpmn_definitions")
     grouped_instances_with_bpmn = enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df)
     #logger.debug(grouped_instances_with_bpmn, variable_name="grouped_instances_with_bpmn", max_lines=3)
@@ -203,9 +212,12 @@ def analyze_documents(caption_filter=None):
         logger.warning("Не вдалося доповнити групи екземплярів процесів BPMN моделями.")
         return
 
+    ###########################
+    # будуємо граф для процесів, враховуючі деталі по задачам
     bpm_tasks = read_from_parquet("bpm_tasks")
     camunda_tasks = read_from_parquet("act_hi_taskinst")
-    logger.debug(camunda_tasks, variable_name="camunda_tasks", max_lines=3)
+    #logger.debug(camunda_tasks, variable_name="camunda_tasks", max_lines=3)
+
     enriched_tasks = bpm_tasks.merge(
         camunda_tasks[['ID_', 'TASK_DEF_KEY_']],
         how='left',
@@ -216,6 +228,8 @@ def analyze_documents(caption_filter=None):
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=3)
 
+    ###########################
+    # зберігаємо отримані графи
     for doc_id, root_graphs in grouped_graph.items():
         for root_proc_id, graph in root_graphs.items():
             file_name = f"{doc_id}-{root_proc_id}.graphml"

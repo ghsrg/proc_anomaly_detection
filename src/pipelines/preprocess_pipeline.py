@@ -6,9 +6,6 @@ from src.config.secrets import BPMS_CONFIG, CAMUNDA_CONFIG
 
 logger = get_logger(__name__)
 
-#RAW_DATA_PATH = os.path.join("data", "raw")
-#os.makedirs(RAW_DATA_PATH, exist_ok=True)  # Переконуємося, що папка існує
-
 
 def load_camunda_data():
     """
@@ -33,6 +30,13 @@ def load_camunda_data():
     """
     taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
     save_to_parquet(taskinst_df, "act_hi_taskinst")
+
+    # Завантаження ACT_HI_ACTINST
+    taskinst_query = """
+               SELECT *  FROM ACT_HI_ACTINST act;
+        """
+    act_inst = execute_query(taskinst_query, CAMUNDA_CONFIG)
+    save_to_parquet(act_inst, "act_inst")
 
 
     # Завантаження BPMN XML
