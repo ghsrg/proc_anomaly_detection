@@ -17,7 +17,7 @@
     <file url="file://$PROJECT_DIR$/src/pipelines/evaluate_pipeline.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/pipelines/preprocess_pipeline.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/utils/metrics.py" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/src/utils/visualizer.py" charset="windows-1251" />
+    <file url="file://$PROJECT_DIR$/src/utils/visualizer.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/tests/test_data_processing.py" charset="UTF-8" />
   </component>
 </project>

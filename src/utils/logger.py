@@ -25,30 +25,82 @@ class ColorFormatter(logging.Formatter):
         log_message = super().format(record)
         return f"{color}{log_message}{Style.RESET_ALL}"
 
+
+import pandas as pd
+
+import pandas as pd
+import networkx as nx
+from pprint import pformat
+
+
 class CustomLogger(logging.Logger):
     def debug(self, msg, *args, **kwargs):
         if not isinstance(msg, str):
             variable_name = kwargs.pop('variable_name', '<unnamed>')
             depth = kwargs.pop('depth', None)
+            max_lines = kwargs.pop('max_lines', None)
 
             msg_details = [
                 f"Назва змінної: {variable_name}",
-                f"Тип: {type(msg)}"
+                f"Тип: {type(msg)}",
+                f"Довжина: {len(msg) if hasattr(msg, '__len__') else 'N/A'}"
             ]
 
-            if hasattr(msg, "__len__"):
-                msg_details.append(f"Кількість елементів: {len(msg)}")
+            # Рекурсивна функція для перевірки типів елементів в структурі
+            def analyze_structure(data, level=1, max_depth=3):
+                """
+                Рекурсивно аналізує структуру даних (словники, списки, тощо).
+                :param data: Дані для аналізу.
+                :param level: Поточний рівень рекурсії (дефолтне значення 1).
+                :param max_depth: Максимальна глибина рекурсії.
+                :return: Опис структури.
+                """
+                if level > max_depth:
+                    return "...(over max depth)..."
 
-            if isinstance(msg, nx.Graph):
-                graph_info = [
-                    f"Nodes: {len(msg.nodes)}",
-                    f"Edges: {len(msg.edges)}",
-                    f"Sample Nodes: {list(msg.nodes(data=True))[:depth]}",
-                    f"Sample Edges: {list(msg.edges(data=True))[:depth]}"
-                ]
-                msg_details.append("Інформація про граф:\n" + "\n".join(graph_info))
+                if isinstance(data, dict):
+                    result = {}
+                    for key, value in list(data.items())[:max_lines]:
+                        result[key] = analyze_structure(value, level + 1, max_depth)
+                    return result
+                elif isinstance(data, list):
+                    return [analyze_structure(item, level + 1, max_depth) for item in data[:max_lines]]
+                elif isinstance(data, pd.DataFrame):
+                    # Додано: кількість рядків у DataFrame
+                    return f"DataFrame - Колонки: {list(data.columns)}, Кількість рядків: {data.shape[0]}"
+                elif isinstance(data, nx.Graph):
+                    # Для графів NetworkX
+                    return (f"Graph - Тип: {type(data).__name__}, "
+                            f"Вузлів: {data.number_of_nodes()}, "
+                            f"Ребер: {data.number_of_edges()}, "
+                            f"Вузли (перші {max_lines}): {list(data.nodes())[:max_lines]}, "
+                            f"Ребра (перші {max_lines}): {list(data.edges())[:max_lines]}")
+                else:
+                    return f"Тип: {type(data)}; Значення: {repr(data)}"
+
+            # Якщо це словник, аналізуємо його структуру
+            if isinstance(msg, dict):
+                msg_details.append(f"Структура словника (перші {max_lines} елементів):")
+                for key, value in list(msg.items())[:max_lines]:
+                    msg_details.append(f"{key}: {analyze_structure(value, level=1, max_depth=3)}")
+            # Якщо це DataFrame, виводимо завжди, навіть як значення в словнику
+            elif isinstance(msg, pd.DataFrame):
+                # Виведення назв колонок
+                msg_details.append(f"Колонки DataFrame: {list(msg.columns)}")
+                # Виведення типів даних у кожному стовпці
+                #msg_details.append(f"Типи даних у кожному стовпці: {msg.dtypes}")
+                # Виведення перших кількох рядків
+                msg_details.append(f"Структура DataFrame (перші {max_lines} рядків):\n{msg.head(max_lines)}")
+            # Якщо це граф NetworkX
+            elif isinstance(msg, nx.Graph):
+                msg_details.append(f"Граф NetworkX: {analyze_structure(msg, level=1, max_depth=3)}")
             else:
                 formatted_value = pformat(msg, indent=4, depth=depth)
+
+                # Обрізаємо по max_lines, якщо вказано
+                if max_lines:
+                    formatted_value = "\n".join(formatted_value.splitlines()[:max_lines])
+
                 msg_details.append(f"Значення:\n{formatted_value}")
 
             msg = "\n".join(msg_details)
@@ -58,7 +110,6 @@ class CustomLogger(logging.Logger):
         except UnicodeEncodeError:
             msg = msg.encode('ascii', errors='replace').decode('ascii')
             super().debug(msg, *args)
-
 
 
 def get_logger(name: str):

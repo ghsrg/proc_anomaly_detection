@@ -18,28 +18,27 @@ def load_camunda_data():
 
     # Завантаження ACT_HI_PROCINST
     actinst_query = """
-    SELECT 
-        *
-    FROM 
-        ACT_HI_PROCINST;
-    """
+                SELECT 
+                    *
+                FROM 
+                    ACT_HI_PROCINST;
+                """
     procinst_df = execute_query(actinst_query, CAMUNDA_CONFIG)
     save_to_parquet(procinst_df, "act_hi_procinst")
 
+
     # Завантаження ACT_HI_TASKINST
     taskinst_query = """
-           SELECT  * FROM ACT_HI_ACTINST act;
+           SELECT  ID_, TASK_DEF_KEY_, PROC_DEF_KEY_  FROM ACT_HI_TASKINST act;
     """
-    #taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
-    #save_to_parquet(taskinst_df, "act_hi_taskinst")
+    taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
+    save_to_parquet(taskinst_df, "act_hi_taskinst")
+
 
     # Завантаження BPMN XML
     bpmn_query = """
        SELECT 
            proc_def.ID_ AS process_definition_id,
-           proc_def.KEY_ AS process_key,
-           proc_def.NAME_ AS process_name,
-           proc_def.DEPLOYMENT_ID_ AS deployment_id,
            bytearray.BYTES_ AS bpmn_model
        FROM 
            ACT_RE_PROCDEF proc_def

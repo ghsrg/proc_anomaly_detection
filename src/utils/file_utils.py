@@ -71,3 +71,14 @@ def save_graphs(process_graph, path):
             nx.write_graphml(subgraph, graph_file)
             logger.info(f"Граф процесу {node} збережено у {graph_file}.")
 
+def save_graph(graph: nx.DiGraph, file_name: str, path: str):
+    """
+    Зберігає граф у форматі GraphML.
+    :param graph: Граф NetworkX.
+    :param file_name: Назва файлу для збереження.
+    :param path: Шлях до папки для збереження.
+    """
+    make_dir(path)  # Створює папку, якщо її не існує
+    file_path = join_path([path, f"{file_name}.graphml"])
+    nx.write_graphml(graph, file_path)
+    logger.info(f"Граф збережено у {file_path}")

@@ -1,9 +1,9 @@
 from src.pipelines.preprocess_pipeline import run_preprocess_pipeline
-from src.core.graph_processing import build_process_graph
+
 from src.utils.logger import get_logger
 from src.utils.file_utils import read_from_parquet, save_graphs
 from src.utils.visualizer import visualize_graph
-from src.config.config import GRAPH_PATH
+
 import networkx as nx
 from src.modules.document_analysis import analyze_documents
 
@@ -34,7 +34,7 @@ def run_experimental_mode(reload):
         return
 
     # Побудова графа процесів
-    process_graph = build_process_graph(bpmn_df)
+   # process_graph = build_process_graph(bpmn_df)
 
     # Збереження графів
     #save_graphs(process_graph, GRAPH_PATH)
@@ -43,5 +43,5 @@ def run_experimental_mode(reload):
 
     # Візуалізація графа (за потреби)
   #  logger.info("Відображення графа...")
-   # visualize_graph(process_graph, "graph")
+  #  visualize_graph(process_graph, "graph")
     logger.info("Експериментальний режим завершено.")
