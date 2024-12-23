@@ -138,7 +138,7 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
 
                 # Використовуємо merge для додавання bpmn_model
                 group = group.merge(
-                    bpmn_df[['process_definition_id', 'bpmn_model']],
+                    bpmn_df[['process_definition_id', 'bpmn_model','KEY_']],
                     left_on='PROC_DEF_ID_',
                     right_on='process_definition_id',
                     how='left'
@@ -176,7 +176,7 @@ def analyze_documents(caption_filter=None):
 
     ###########################
     # Отримання списку документів для аналізу
-    docs = read_from_parquet("bpm_docs")
+    docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
     documents = get_documents_for_definition(doc_def['ID'], docs, [3003642240662])
 
     if documents is None or documents.empty:
@@ -195,7 +195,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Групування екземплярів процесів за ROOT_PROC_INST_ID_ для кожного документа
     grouped_instances = {}
-    camunda_instances = read_from_parquet("ACT_HI_PROCINST")
+    camunda_instances = read_from_parquet("ACT_HI_PROCINST", columns=["ID_", "ROOT_PROC_INST_ID_", "PROC_DEF_ID_"]) #, columns=["ID_", "ROOT_PROC_INST_ID_"]
     # logger.debug(camunda_instances, variable_name="camunda_instances", max_lines=3)
     for doc_id, processes in process_instances.items():
         grouped = group_process_instances_by_root({doc_id: processes}, camunda_instances)
@@ -215,8 +215,9 @@ def analyze_documents(caption_filter=None):
     ###########################
     # будуємо граф для процесів, враховуючі деталі по задачам
     bpm_tasks = read_from_parquet("bpm_tasks")
-    camunda_tasks = read_from_parquet("act_hi_taskinst")
-    #logger.debug(camunda_tasks, variable_name="camunda_tasks", max_lines=3)
+    camunda_tasks = read_from_parquet("act_hi_taskinst", columns=["ID_", "TASK_DEF_KEY_"])
+    camunda_actions = read_from_parquet("act_inst", columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_", "ROOT_PROC_INST_ID_", "PROC_INST_ID_"])
+    #logger.debug(camunda_actions, variable_name="camunda_actions", max_lines=3)
 
     enriched_tasks = bpm_tasks.merge(
         camunda_tasks[['ID_', 'TASK_DEF_KEY_']],
@@ -224,7 +225,7 @@ def analyze_documents(caption_filter=None):
         left_on='externalid',
         right_on='ID_'
     )
-    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks)
+    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions)
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=3)
 
@@ -232,7 +233,7 @@ def analyze_documents(caption_filter=None):
     # зберігаємо отримані графи
     for doc_id, root_graphs in grouped_graph.items():
         for root_proc_id, graph in root_graphs.items():
-            file_name = f"{doc_id}-{root_proc_id}.graphml"
+            file_name = f"{doc_id}_{root_proc_id}"
             try:
                 save_graph(graph, file_name, GRAPH_PATH)
                 #logger.info(f"Граф збережено: {GRAPH_PATH}")

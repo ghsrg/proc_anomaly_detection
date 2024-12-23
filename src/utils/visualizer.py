@@ -7,45 +7,50 @@ def visualize_graph_with_dot(graph):
     Візуалізація графа NetworkX у стилі BPMN із використанням Graphviz 'dot'.
     У вузлах відображаємо BPMN name або task_subject, фарбуємо вузли за типом.
     На ребрах показуємо conditionExpression або name (якщо є).
+    Якщо SEQUENCE_COUNTER_ заповнено, вузол матиме чорну обводку.
     """
 
     # Використовуємо layout від Graphviz з алгоритмом 'dot'
     pos = nx.nx_agraph.graphviz_layout(graph, prog='dot')
 
-    # Підготовка полотна
     plt.figure(figsize=(15, 10))
 
-    # Підписи та кольори для вузлів
     node_labels = {}
-    colors = []
+    fill_colors = []
+    border_colors = []
 
     for node, data in graph.nodes(data=True):
-        # Витягаємо назву й тип
+        # Отримуємо ідентифікатор/назву
         bpmn_name = data.get('name', node)
-        subject = data.get('task_subject', '')
         node_type = data.get('type', '').lower()
 
-        # Формуємо напис
-        label_text = bpmn_name  # або f"{bpmn_name}\n({subject})" якщо треба обидва
+        # Формуємо підпис
+        label_text = bpmn_name
         node_labels[node] = label_text
 
-        # Логіка фарбування:
+        # Фарбуємо "заливку" вузла
         if 'startevent' in node_type:
-            colors.append('lightgreen')
+            fill_colors.append('lightgreen')
         elif 'endevent' in node_type:
-            colors.append('lightcoral')
+            fill_colors.append('lightcoral')
         elif 'gateway' in node_type:
-            colors.append('yellow')
-        # Якщо це userTask або (callActivity / subProcess):
+            fill_colors.append('yellow')
         elif node_type in ['usertask', 'subprocess', 'callactivity']:
-            colors.append('cornflowerblue')  # Інший відтінок синього
+            fill_colors.append('cornflowerblue')
         else:
-            colors.append('lightblue')  # Решта задач у стандартному блакитному
+            fill_colors.append('lightblue')
+
+        # Якщо SEQUENCE_COUNTER_ існує й не порожній, обводка чорна, інакше "none"
+        seq_counter = data.get('SEQUENCE_COUNTER_')
+        if seq_counter is not None and seq_counter != '':
+            border_colors.append('black')
+        else:
+            border_colors.append('none')
 
     # Підписи для ребер
     edge_labels = {}
     for u, v, edge_data in graph.edges(data=True):
-        cond_expr = edge_data.get('conditionExpression', '')
+        cond_expr = edge_data.get('DURATION_', '')
         flow_name = edge_data.get('name', '')
         if cond_expr:
             edge_labels[(u, v)] = cond_expr
@@ -55,11 +60,14 @@ def visualize_graph_with_dot(graph):
             edge_labels[(u, v)] = ''
 
     # Малюємо вузли
+    # node_color = fill_colors — це "заливка"
+    # edgecolors = border_colors — це колір обводки
     nx.draw(
         graph,
         pos,
         labels=node_labels,
-        node_color=colors,
+        node_color=fill_colors,
+        edgecolors=border_colors,
         with_labels=True,
         node_size=1500,
         font_size=8,
@@ -68,10 +76,10 @@ def visualize_graph_with_dot(graph):
         arrowsize=12
     )
 
-    # Додаємо підписи ребер
+    # Підписи на ребрах
     nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=8)
 
-    plt.title("BPMN Graph using Graphviz 'dot'", fontsize=14)
+    plt.title("BPMN Graph using Graphviz 'dot' (Sequence Counter Border)", fontsize=14)
     plt.axis("off")
     plt.tight_layout()
     plt.show()

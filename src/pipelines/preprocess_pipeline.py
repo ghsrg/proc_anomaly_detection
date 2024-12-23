@@ -20,29 +20,30 @@ def load_camunda_data():
                 FROM 
                     ACT_HI_PROCINST;
                 """
-    procinst_df = execute_query(actinst_query, CAMUNDA_CONFIG)
-    save_to_parquet(procinst_df, "act_hi_procinst")
+  #  procinst_df = execute_query(actinst_query, CAMUNDA_CONFIG)
+  #  save_to_parquet(procinst_df, "act_hi_procinst")
 
 
     # Завантаження ACT_HI_TASKINST
     taskinst_query = """
            SELECT  ID_, TASK_DEF_KEY_, PROC_DEF_KEY_  FROM ACT_HI_TASKINST act;
     """
-    taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
-    save_to_parquet(taskinst_df, "act_hi_taskinst")
+#    taskinst_df = execute_query(taskinst_query, CAMUNDA_CONFIG)
+ #   save_to_parquet(taskinst_df, "act_hi_taskinst")
 
     # Завантаження ACT_HI_ACTINST
     taskinst_query = """
                SELECT *  FROM ACT_HI_ACTINST act;
         """
-    act_inst = execute_query(taskinst_query, CAMUNDA_CONFIG)
-    save_to_parquet(act_inst, "act_inst")
+ #   act_inst = execute_query(taskinst_query, CAMUNDA_CONFIG)
+ #   save_to_parquet(act_inst, "act_inst")
 
 
     # Завантаження BPMN XML
     bpmn_query = """
        SELECT 
            proc_def.ID_ AS process_definition_id,
+            proc_def.KEY_ AS KEY_,
            bytearray.BYTES_ AS bpmn_model
        FROM 
            ACT_RE_PROCDEF proc_def
@@ -111,6 +112,6 @@ def run_preprocess_pipeline():
     Основний запуск конвеєра обробки.
     """
     logger.info("Запуск конвеєра попередньої обробки.")
-    load_bpms_data()
+ #   load_bpms_data()
     load_camunda_data()
     logger.info("Конвеєр попередньої обробки завершено.")

@@ -18,7 +18,7 @@ def save_to_parquet(df: pd.DataFrame, file_name: str):
     df.to_parquet(raw_data_path, engine="pyarrow", index=False)
     logger.info(f"Дані збережено у {raw_data_path}")
 
-def read_from_parquet(file_name: str) -> pd.DataFrame:
+def read_from_parquet(file_name: str, columns=None) -> pd.DataFrame:
     """
     Завантажує сирі дані з файлу Parquet.
     :param file_name: Назва файлу для завантаження.
@@ -26,7 +26,7 @@ def read_from_parquet(file_name: str) -> pd.DataFrame:
     """
    # raw_data_path = os.path.join("data", "raw", f"{file_name}.parquet")
     raw_data_path = join_path([RAW_PATH, f"{file_name}.parquet"])
-    df = pd.read_parquet(raw_data_path, engine="pyarrow")
+    df = pd.read_parquet(raw_data_path, engine="pyarrow", columns=columns)
     logger.info(f"Дані завантажено з {raw_data_path}")
     return df
 
