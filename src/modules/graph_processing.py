@@ -8,7 +8,7 @@ logger = get_logger(__name__)
 
 def parse_bpmn_and_find_elements(bpmn_model):
     """
-    Парсинг BPMN-моделі й повернення словника елементів:
+    Парсинг BPMN-моделі й повернення словника активних елементів:
     - nodes: {node_id: {type, name, ...}}
     - edges: [{source, target, attributes}]
     """
@@ -26,7 +26,7 @@ def parse_bpmn_and_find_elements(bpmn_model):
             'edges': []
         }
 
-        # Теги, які вважаємо "вузлами"
+        # Теги активних елементів BPMN
         node_tags = [
             'task', 'userTask', 'scriptTask', 'serviceTask',
             'startEvent', 'endEvent', 'intermediateThrowEvent',
@@ -36,10 +36,10 @@ def parse_bpmn_and_find_elements(bpmn_model):
 
         for process in root.findall('.//bpmn:process', namespace):
             for element in process:
-                tag = element.tag.split('}')[-1]  # назва без простору імен
+                tag = element.tag.split('}')[-1]  # Назва без простору імен
                 node_id = element.attrib.get('id')
                 if not node_id:
-                    continue  # пропускаємо елементи без ідентифікатора
+                    continue  # Пропускаємо елементи без ідентифікатора
 
                 if tag in node_tags:
                     node_name = element.attrib.get('name', tag)
@@ -49,9 +49,13 @@ def parse_bpmn_and_find_elements(bpmn_model):
                         'name': node_name
                     }
 
-                    # Якщо це callActivity, додамо calledElement
+                    # Специфічні атрибути для callActivity
                     if tag == 'callActivity':
                         node_info['calledElement'] = element.attrib.get('calledElement', '')
+
+                    # Специфічні атрибути для boundaryEvent
+                    if tag == 'boundaryEvent':
+                        node_info['attachedToRef'] = element.attrib.get('attachedToRef', '')
 
                     elements['nodes'][node_id] = node_info
 
@@ -82,6 +86,7 @@ def parse_bpmn_and_find_elements(bpmn_model):
 
         return elements
     except Exception as e:
+        logger = get_logger(__name__)
         logger.error(f"Помилка парсингу BPMN: {e}")
         return None
 
@@ -146,13 +151,21 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         elements = parse_bpmn_and_find_elements(bpmn_model)
         if not elements:
             return None
-
+        #logger.debug(elements, variable_name="elements", max_lines=3)
         nodes = elements['nodes']
         edges = elements['edges']
 
         # Додаємо вузли з BPMN
         for node_id, attr in nodes.items():
             graph.add_node(node_id, **attr)
+
+
+        # Додаємо прив'язані елементи (boundary events та інші)
+        for node_id, attr in nodes.items():
+            attached_to = attr.get('attachedToRef')  # Шукаємо вузол, до якого прив'язаний елемент
+            if attached_to and attached_to in graph.nodes:
+                # Додаємо ребро між вузлом-власником і прив'язаним елементом
+                graph.add_edge(attached_to, node_id, type='attached')
 
         # Мапимо дії з Camunda
         filtered_camunda_actions = camunda_actions[camunda_actions['PROC_INST_ID_'] == proc_id]
@@ -179,13 +192,13 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         for node_id in graph.nodes:
             if node_id in tasks_mapping.index:
                 task_row = tasks_mapping.loc[node_id]
-                logger.debug(task_row, variable_name="task_row", max_lines=3)
-                graph.nodes[node_id].update({
-                    'task_subject': task_row.get('task_subject', ''),
-                    'user_compl_login': task_row.get('user_compl_login', ''),
-                    'taskaction_code': task_row.get('taskaction_code', ''),
-                    'duration_work': task_row.get('duration_work', '')
-                })
+                #logger.debug(task_row, variable_name="task_row", max_lines=3)
+         #       graph.nodes[node_id].update({
+         #           'task_subject': task_row.get('task_subject', ''),
+        #            'user_compl_login': task_row.get('user_compl_login', ''),
+         #           'taskaction_code': task_row.get('taskaction_code', ''),
+          #          'duration_work': task_row.get('duration_work', '')
+         #       })
 
         # Додаємо ребра (sequenceFlow) з атрибутами
         for edge in edges:
@@ -202,19 +215,21 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
             })
             graph.add_edge(source, target, **attrs)
 
+        # Додаємо підпроцеси
         for node_id, attr in nodes.items():
             if attr.get('type') == 'callActivity' and 'calledElement' in attr:
                 subprocess_key = attr['calledElement']
-                logger.debug(subprocess_key, variable_name="subprocess_key")
-                logger.debug(group, variable_name="group")
-                # Перевірка наявності колонки 'PROC_DEF_KEY_'
+                #logger.debug(subprocess_key, variable_name="subprocess_key")
+                #logger.debug(group, variable_name="group")
+
+                # Перевірка наявності колонки 'KEY_'
                 if 'KEY_' not in group.columns:
                     logger.warning(
-                        f"Колонка 'KEY_' відсутня у групі для підпроцесу з ключем {subprocess_key}. Підпроцес буде пропущений.")
+                        f"Колонка 'KEY_' відсутня у групі для підпроцесу з ключем {subprocess_key}. Підпроцес буде пропущений."
+                    )
                     continue
 
                 matching_subprocess = group[group['KEY_'] == subprocess_key]
-                logger.debug(matching_subprocess, variable_name="matching_subprocess")
                 if matching_subprocess.empty:
                     logger.warning(f"Не знайдено підпроцес з ключем {subprocess_key}. Підпроцес буде пропущений.")
                     continue
@@ -235,7 +250,38 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                 )
 
                 if subprocess_graph:
+                    # Знаходимо вхідні та вихідні вузли в підпроцесі
+                    start_nodes = [n for n, d in subprocess_graph.in_degree() if d == 0]
+                    end_nodes = [n for n, d in subprocess_graph.out_degree() if d == 0]
+
+                    # Замінюємо тип стартових подій підпроцесу
+                    for start_node in start_nodes:
+                        if subprocess_graph.nodes[start_node].get('type') == 'startEvent':
+                            subprocess_graph.nodes[start_node]['type'] = 'startEventsp'
+                    for end_node in end_nodes:
+                        if subprocess_graph.nodes[end_node].get('type') == 'endEvent':
+                            subprocess_graph.nodes[end_node]['type'] = 'endEventsp'
+
+                    # Отримуємо попередники та наступники вузла callActivity
+                    predecessors = list(graph.predecessors(node_id))
+                    successors = list(graph.successors(node_id))
+
+                    # Видаляємо вузол callActivity
+                    graph.remove_node(node_id)
+
+                    # Додаємо вузли та ребра підпроцесу до головного графа
                     graph = nx.compose(graph, subprocess_graph)
+
+                    # З'єднуємо вхідні вузли підпроцесу з попередниками callActivity
+                    for pred in predecessors:
+                        for start_node in start_nodes:
+                            graph.add_edge(pred, start_node)
+
+                    # З'єднуємо вихідні вузли підпроцесу з наступниками callActivity
+                    for succ in successors:
+                        for end_node in end_nodes:
+                            graph.add_edge(end_node, succ)
+
                 else:
                     logger.warning(f"Не вдалося побудувати граф для підпроцесу з ключем {subprocess_key}.")
 

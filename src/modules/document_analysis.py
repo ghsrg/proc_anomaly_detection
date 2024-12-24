@@ -3,7 +3,8 @@ from src.utils.logger import get_logger
 from src.utils.file_utils import read_from_parquet
 from src.modules.graph_processing import build_graph_for_group
 from src.config.config import GRAPH_PATH
-from src.utils.file_utils import read_from_parquet, save_graph
+from src.utils.file_utils import read_from_parquet, save_graph, save_graph_to_zip, save_graph_pic
+from src.utils.visualizer import visualize_graph_with_dot
 
 logger = get_logger(__name__)
 
@@ -177,7 +178,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003642240662])
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643937678])
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -235,7 +236,9 @@ def analyze_documents(caption_filter=None):
         for root_proc_id, graph in root_graphs.items():
             file_name = f"{doc_id}_{root_proc_id}"
             try:
+                #save_graph_to_zip(graph, file_name, GRAPH_PATH)
                 save_graph(graph, file_name, GRAPH_PATH)
+                save_graph_pic(graph, file_name, GRAPH_PATH, visualize_graph_with_dot)
                 #logger.info(f"Граф збережено: {GRAPH_PATH}")
             except Exception as e:
                 logger.error(f"Не вдалося зберегти граф {file_name}: {e}")

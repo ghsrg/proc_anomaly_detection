@@ -1,17 +1,21 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+from src.utils.logger import get_logger
 
+logger = get_logger(__name__)
 
-def visualize_graph_with_dot(graph):
+def visualize_graph_with_dot(graph, file_path=None):
     """
     Візуалізація графа NetworkX у стилі BPMN із використанням Graphviz 'dot'.
     У вузлах відображаємо BPMN name або task_subject, фарбуємо вузли за типом.
     На ребрах показуємо conditionExpression або name (якщо є).
     Якщо SEQUENCE_COUNTER_ заповнено, вузол матиме чорну обводку.
+     :param graph: Граф NetworkX для візуалізації.
+    :param file_path: Шлях до файлу для збереження (якщо None, виводить на екран).
     """
 
     # Використовуємо layout від Graphviz з алгоритмом 'dot'
-    pos = nx.nx_agraph.graphviz_layout(graph, prog='dot')
+    pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
     plt.figure(figsize=(15, 10))
 
@@ -27,17 +31,31 @@ def visualize_graph_with_dot(graph):
         # Формуємо підпис
         label_text = bpmn_name
         node_labels[node] = label_text
-
+        #logger.debug(node_type, variable_name="node_type", max_lines=3)
         # Фарбуємо "заливку" вузла
-        if 'startevent' in node_type:
+        if 'starteventsp' in node_type:
             fill_colors.append('lightgreen')
+        elif 'startevent' in node_type:
+            fill_colors.append('green')
+        elif 'endeventsp' in node_type:
+            fill_colors.append('#f9cfcf')
         elif 'endevent' in node_type:
-            fill_colors.append('lightcoral')
+            fill_colors.append('red')
         elif 'gateway' in node_type:
             fill_colors.append('yellow')
-        elif node_type in ['usertask', 'subprocess', 'callactivity']:
+        elif node_type in ['subprocess', 'callactivity']:
             fill_colors.append('cornflowerblue')
+        elif node_type in ['usertask']:
+            fill_colors.append('blue')
+        elif node_type in ['scripttask','servicetask']:
+            fill_colors.append('#f2e6fb')
+        elif node_type in ['intermediatethrowevent']:
+            fill_colors.append('#27c4c4')
+        elif node_type in ['boundaryevent']:
+            fill_colors.append('#e7d0f7')
         else:
+            if node_type:
+                logger.debug(node_type, variable_name="node_type", max_lines=3)
             fill_colors.append('lightblue')
 
         # Якщо SEQUENCE_COUNTER_ існує й не порожній, обводка чорна, інакше "none"
@@ -69,8 +87,8 @@ def visualize_graph_with_dot(graph):
         node_color=fill_colors,
         edgecolors=border_colors,
         with_labels=True,
-        node_size=1500,
-        font_size=8,
+        node_size=1200,
+        font_size=6,
         edge_color='gray',
         arrows=True,
         arrowsize=12
@@ -82,7 +100,12 @@ def visualize_graph_with_dot(graph):
     plt.title("BPMN Graph using Graphviz 'dot' (Sequence Counter Border)", fontsize=14)
     plt.axis("off")
     plt.tight_layout()
-    plt.show()
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Граф збережено у {file_path}")
+    else:
+        plt.show()
 
 def visualize_graph(graph):
     """
