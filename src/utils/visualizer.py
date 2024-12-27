@@ -17,7 +17,7 @@ def visualize_graph_with_dot(graph, file_path=None):
     """
 
     # Використовуємо layout від Graphviz з алгоритмом 'dot'
-    #graph = clean_graph(graph)
+    graph = clean_graph(graph)
     pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
     plt.figure(figsize=(15, 10))
