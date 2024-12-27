@@ -16,7 +16,7 @@ def clean_graph(graph):
         active_executions = attrs.get('active_executions', None)
 
         # Перевіряємо умови для видалення
-        if node_type not in ['startevent', 'endevent','endeventsp','starteventsp'] and (active_executions is None or active_executions == 0):
+        if node_type not in ['startevent-', 'endevent-','endeventsp-','starteventsp-'] and (active_executions is None or active_executions == 0):
             #logger.debug(attrs, variable_name="attrs", max_lines=10)
             nodes_to_remove.append(node_id)
 

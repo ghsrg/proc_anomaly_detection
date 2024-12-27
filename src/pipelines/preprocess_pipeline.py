@@ -89,6 +89,42 @@ def load_bpms_data():
                 doc_labels
             FROM dbo.ks_dwh_bpm_docs;
         """,
+        "bpm_doc_purch": """
+                SELECT 
+                    doc_id,
+                    doc_subject,
+                    docstate_code,
+                    KindPurchase,
+                    TypePurchase,
+                    ClassSSD,
+                    FlowType,
+                    CategoryL1,
+                    CategoryL2,
+                    CategoryL3,
+                    Company_SO,
+                    CAST(ExpectedDate AS DATETIME) AS ExpectedDate,
+                    CAST(DateKTC AS DATETIME) AS DateKTC,
+                    CAST(DateInWorkKaM AS DATETIME) AS DateInWorkKaM,
+                    CAST(DateApprovalFD AS DATETIME) AS DateApprovalFD,
+                    CAST(DateApprovalStartProcurement AS DATETIME) AS DateApprovalStartProcurement,
+                    CAST(DateAppFunAss AS DATETIME) AS DateAppFunAss,
+                    CAST(DateAppCommAss AS DATETIME) AS DateAppCommAss,
+                    CAST(DateApprovalProcurementResults AS DATETIME) AS DateApprovalProcurementResults,
+                    CAST(DateAppProcCom AS DATETIME) AS DateAppProcCom,
+                    CAST(DateAppContract AS DATETIME) AS DateAppContract,
+                    CAST(DateSentSO AS DATETIME) AS DateSentSO,
+                    PurchasingBudget,
+                    InitialPrice,
+                    FinalPrice,
+                    CAST(doc_createdate AS DATETIME) AS doc_createdate,
+                    responsible_user_login,
+                    CAM_user_login,
+                    CEO2_user_login,
+                    BudgetAnalyst_user_login,
+                    ContractManager_user_login,
+                    ManagerFunction_user_login
+                FROM dbo.ks_dwh_purchase_cxo_rep;
+            """,
         "bpm_tasks": "SELECT * FROM dbo.ks_dwh_bpm_tasks;",
         "bpm_doc_purchase": "SELECT * FROM dbo.ks_dwh_purchase_cxo_rep;",
         "bpm_process": "SELECT * FROM dbo.ks_dwh_bpm_process;",
@@ -112,6 +148,6 @@ def run_preprocess_pipeline():
     Основний запуск конвеєра обробки.
     """
     logger.info("Запуск конвеєра попередньої обробки.")
- #   load_bpms_data()
-    load_camunda_data()
+    load_bpms_data()
+    #load_camunda_data()
     logger.info("Конвеєр попередньої обробки завершено.")

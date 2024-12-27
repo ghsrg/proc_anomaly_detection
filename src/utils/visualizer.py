@@ -17,7 +17,7 @@ def visualize_graph_with_dot(graph, file_path=None):
     """
 
     # Використовуємо layout від Graphviz з алгоритмом 'dot'
-    graph = clean_graph(graph)
+    #graph = clean_graph(graph)
     pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
     plt.figure(figsize=(140, 90))
@@ -38,7 +38,9 @@ def visualize_graph_with_dot(graph, file_path=None):
         node_type = node_type.lower() if isinstance(node_type, str) else ''
 
         # Формуємо підпис
-        label_text = bpmn_name
+        #label_text = bpmn_name
+        words = bpmn_name.split()
+        label_text = '\n'.join([' '.join(words[i:i + 2]) for i in range(0, len(words), 2)])
         #node_labels[node] = f"{label_text}#_{node}"
         node_labels[node] = f"{label_text}"
         #logger.debug(node_type, variable_name="node_type", max_lines=3)
@@ -79,13 +81,14 @@ def visualize_graph_with_dot(graph, file_path=None):
     edge_labels = {}
     for u, v, edge_data in graph.edges(data=True):
         cond_expr = edge_data.get('DURATION_', '')
+        taskaction = edge_data.get('taskaction_code', '')
         flow_name = edge_data.get('name', '')
-        if cond_expr:
-            edge_labels[(u, v)] = cond_expr
-        elif flow_name:
-            edge_labels[(u, v)] = flow_name
-        else:
-            edge_labels[(u, v)] = ''
+        #if cond_expr:
+        edge_labels[(u, v)] = f'{cond_expr} \n {taskaction} \n {flow_name}'
+        #elif flow_name:
+       #     edge_labels[(u, v)] = flow_name
+        #else:
+       #     edge_labels[(u, v)] = ''
 
     # Малюємо вузли
     # node_color = fill_colors — це "заливка"
@@ -97,11 +100,13 @@ def visualize_graph_with_dot(graph, file_path=None):
         node_color=fill_colors,
         edgecolors=border_colors,
         with_labels=True,
-        node_size=8000,
+        node_size=10000,
         font_size=8,
         edge_color='gray',
         arrows=True,
-        arrowsize=30
+        arrowsize=40,
+        width=2,
+        linewidths=3  # Товщина бордера вузлів
     )
 
     # Підписи на ребрах
@@ -109,7 +114,7 @@ def visualize_graph_with_dot(graph, file_path=None):
 
     plt.title("BPMN Graph using Graphviz 'dot' (Sequence Counter Border)", fontsize=14)
     plt.axis("off")
-    plt.tight_layout()
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
     if file_path:
         plt.savefig(file_path)
         plt.close()

@@ -51,7 +51,7 @@ def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
 
 
 
-        selected_documents = documents[(documents['doctype_id'] == doc_def_id) & (documents['docstate_code'] != 'new')]
+        selected_documents = documents[(documents['doctype_id'] == doc_def_id) & (documents['docstate_code'] != 'new') & (documents['docstate_code'] != 'project')]
 
         if filter_ids and isinstance(filter_ids, list):
             selected_documents = selected_documents[selected_documents['doc_id'].isin(filter_ids)]
@@ -184,7 +184,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003632191514])
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643877955])
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -220,8 +220,9 @@ def analyze_documents(caption_filter=None):
         return
 
     ###########################
-    # будуємо граф для процесів, враховуючі деталі по задачам
+    # будуємо граф для процесів, враховуючи деталі по задачах
     bpm_tasks = read_from_parquet("bpm_tasks")
+
     camunda_tasks = read_from_parquet("act_hi_taskinst", columns=["ID_", "TASK_DEF_KEY_"])
     camunda_actions = read_from_parquet("act_inst", columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_", "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_"])
     #logger.debug(camunda_actions, variable_name="camunda_actions", max_lines=3)
@@ -232,7 +233,8 @@ def analyze_documents(caption_filter=None):
         left_on='externalid',
         right_on='ID_'
     )
-    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions)
+    bpm_doc_purch = read_from_parquet("bpm_doc_purch") #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
+    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions, bpm_doc_purch)
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
 
@@ -248,7 +250,7 @@ def analyze_documents(caption_filter=None):
             try:
                 #save_graph_to_zip(graph, file_name, GRAPH_PATH)
                 save_graph(graph, file_name, GRAPH_PATH)
-                save_graph_pic(graph, file_name, GRAPH_PATH, visualize_graph_with_dot)
+                #save_graph_pic(graph, file_name, GRAPH_PATH, visualize_graph_with_dot)
                 #logger.info(f"Граф збережено: {GRAPH_PATH}")
             except Exception as e:
                 logger.error(f"Не вдалося зберегти граф {file_name}: {e}")
