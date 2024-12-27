@@ -22,8 +22,8 @@ def run_experimental_mode(reload):
         logger.info("Оновлення даних...")
         run_preprocess_pipeline()
 
-    #analyze_documents(caption_filter="001 Запит на закупівлю")
-    analyze_documents(caption_filter="066 Network scheme")
+    analyze_documents(caption_filter="001 Запит на закупівлю")
+    #analyze_documents(caption_filter="066 Network scheme")
 
     ############################################
 ############################################

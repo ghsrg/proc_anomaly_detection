@@ -2,7 +2,10 @@ import xml.etree.ElementTree as ET
 import networkx as nx
 from src.utils.logger import get_logger
 from src.utils.visualizer import visualize_graph, visualize_graph_with_dot
+from src.utils.graph_utils import inspect_graph
 import pandas as pd
+import inspect
+import traceback
 
 logger = get_logger(__name__)
 
@@ -31,12 +34,19 @@ def parse_bpmn_and_find_elements(bpmn_model):
             'task', 'userTask', 'scriptTask', 'serviceTask',
             'startEvent', 'endEvent', 'intermediateThrowEvent',
             'boundaryEvent', 'exclusiveGateway', 'parallelGateway',
-            'subProcess', 'callActivity'
+            'subProcess', 'callActivity', 'intermediateCatchEvent',
+            'manualTask', 'businessRuleTask', 'receiveTask', 'sendTask',
+            'complexGateway', 'eventBasedGateway'
         ]
 
-        for process in root.findall('.//bpmn:process', namespace):
-            for element in process:
-                tag = element.tag.split('}')[-1]  # Назва без простору імен
+        def parse_subprocess(subprocess_element, parent_id=None):
+            """
+            Рекурсивний парсинг елементів всередині subProcess.
+            """
+            subprocess_id = subprocess_element.attrib.get('id')
+
+            for element in subprocess_element:
+                tag = element.tag.split('}')[-1]
                 node_id = element.attrib.get('id')
                 if not node_id:
                     continue  # Пропускаємо елементи без ідентифікатора
@@ -49,17 +59,78 @@ def parse_bpmn_and_find_elements(bpmn_model):
                         'name': node_name
                     }
 
-                    # Специфічні атрибути для callActivity
                     if tag == 'callActivity':
                         node_info['calledElement'] = element.attrib.get('calledElement', '')
 
-                    # Специфічні атрибути для boundaryEvent
                     if tag == 'boundaryEvent':
                         node_info['attachedToRef'] = element.attrib.get('attachedToRef', '')
 
                     elements['nodes'][node_id] = node_info
 
-        # Збираємо sequenceFlow
+                    if parent_id:
+                        # Додаємо ребро від батьківського вузла до стартового вузла subprocess
+                        elements['edges'].append({
+                            'source': parent_id,
+                            'target': node_id,
+                            'attributes': {
+                                'type': 'subprocess'
+                            }
+                        })
+
+                if tag == 'subProcess':
+                    parse_subprocess(element, parent_id=node_id)
+
+            # Збираємо sequenceFlow всередині subprocess
+            for sequence_flow in subprocess_element.findall('.//bpmn:sequenceFlow', namespace):
+                source_ref = sequence_flow.attrib.get('sourceRef')
+                target_ref = sequence_flow.attrib.get('targetRef')
+                edge_id = sequence_flow.attrib.get('id')
+                if not (source_ref and target_ref and edge_id):
+                    continue
+
+                flow_name = sequence_flow.attrib.get('name', '')
+                condition_expr = ''
+                cond_elem = sequence_flow.find('.//bpmn:conditionExpression', namespace)
+                if cond_elem is not None and cond_elem.text:
+                    condition_expr = cond_elem.text.strip()
+
+                elements['edges'].append({
+                    'source': source_ref,
+                    'target': target_ref,
+                    'attributes': {
+                        'id': edge_id,
+                        'name': flow_name,
+                        'conditionExpression': condition_expr
+                    }
+                })
+
+        for process in root.findall('.//bpmn:process', namespace):
+            for element in process:
+                tag = element.tag.split('}')[-1]
+                node_id = element.attrib.get('id')
+                if not node_id:
+                    continue
+
+                if tag in node_tags:
+                    node_name = element.attrib.get('name', tag)
+                    node_type = tag
+                    node_info = {
+                        'type': node_type,
+                        'name': node_name
+                    }
+
+                    if tag == 'callActivity':
+                        node_info['calledElement'] = element.attrib.get('calledElement', '')
+
+                    if tag == 'boundaryEvent':
+                        node_info['attachedToRef'] = element.attrib.get('attachedToRef', '')
+
+                    elements['nodes'][node_id] = node_info
+
+                if tag == 'subProcess':
+                    parse_subprocess(element, parent_id=node_id)
+
+        # Збираємо sequenceFlow на верхньому рівні
         for sequence_flow in root.findall('.//bpmn:sequenceFlow', namespace):
             source_ref = sequence_flow.attrib.get('sourceRef')
             target_ref = sequence_flow.attrib.get('targetRef')
@@ -67,7 +138,6 @@ def parse_bpmn_and_find_elements(bpmn_model):
             if not (source_ref and target_ref and edge_id):
                 continue
 
-            # Читаємо назву переходу (може бути label на стрілці) і conditionExpression
             flow_name = sequence_flow.attrib.get('name', '')
             condition_expr = ''
             cond_elem = sequence_flow.find('.//bpmn:conditionExpression', namespace)
@@ -86,9 +156,10 @@ def parse_bpmn_and_find_elements(bpmn_model):
 
         return elements
     except Exception as e:
-        logger = get_logger(__name__)
         logger.error(f"Помилка парсингу BPMN: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
+
 
 
 def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_actions):
@@ -106,7 +177,7 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
             doc_graphs = {}
 
             for root_proc_id, root_group in root_groups.items():
-                logger.info(f"Побудова графа для ROOT_PROC_ID: {root_proc_id} у документі {doc_id}")
+                logger.info(f"Побудова графа ROOT_PROC_ID: {root_proc_id} у документі {doc_id}")
 
                 # Знаходимо рядок із BPMN
                 root_process_row = root_group[root_group['ID_'] == root_proc_id]
@@ -125,6 +196,8 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
                     doc_graphs[root_proc_id] = graph
 
                 # Можна візуалізувати відразу або окремо
+                from src.utils.graph_utils import clean_graph
+                inspect_graph(graph)
                 visualize_graph_with_dot(graph)
 
             if doc_graphs:
@@ -133,72 +206,129 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
         return result_graphs
     except Exception as e:
         logger.error(f"Помилка під час побудови графів: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 
 def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
     """
     Побудова графа для одного процесу + прив'язка задач (через ACT_ID_).
+    :param camunda_actions:
+    :param proc_id:
     :param bpmn_model: BPMN XML (рядок).
     :param group: DataFrame з процесами (у т.ч. підпроцесами, якщо є). для рекурсивного проходу по підпроцесам
     :param bpm_tasks: DataFrame з історичними записами задач.
     :return: networkx.DiGraph
     """
-    logger = get_logger(__name__)
-
+    level = len(inspect.stack()) - 5  # Рівень стека
+    print(level)
     try:
         graph = nx.DiGraph()
         elements = parse_bpmn_and_find_elements(bpmn_model)
         if not elements:
             return None
-        #logger.debug(elements, variable_name="elements", max_lines=3)
+
         nodes = elements['nodes']
         edges = elements['edges']
 
         # Додаємо вузли з BPMN
         for node_id, attr in nodes.items():
+            attr['active_executions'] = 0  # Додаємо атрибут кількість виконань зі значенням 0
             graph.add_node(node_id, **attr)
 
-
-        # Додаємо прив'язані елементи (boundary events та інші)
+        # Зв'язуємо boundary events та інші
         for node_id, attr in nodes.items():
             attached_to = attr.get('attachedToRef')  # Шукаємо вузол, до якого прив'язаний елемент
             if attached_to and attached_to in graph.nodes:
                 # Додаємо ребро між вузлом-власником і прив'язаним елементом
                 graph.add_edge(attached_to, node_id, type='attached')
 
-        # Мапимо дії з Camunda
+        #logger.debug(nodes, variable_name=f"{level} nodes", max_lines=300)
+
+        # Мапимо дії з Camunda, щоб визначити що виконувалось, та як
         filtered_camunda_actions = camunda_actions[camunda_actions['PROC_INST_ID_'] == proc_id]
         camunda_mapping = filtered_camunda_actions.set_index('ACT_ID_')
-        for node_id in graph.nodes:
+        for node_id in list(graph.nodes):
+
             if node_id in camunda_mapping.index:
                 camunda_row = camunda_mapping.loc[node_id]
 
                 if isinstance(camunda_row, pd.DataFrame):
-                    graph.nodes[node_id].update({
-                        'ACT_TYPE_': camunda_row.get('ACT_TYPE_', '').iloc[0],
-                        'SEQUENCE_COUNTER_': camunda_row.get('SEQUENCE_COUNTER_', '').max(),
-                        'DURATION_': camunda_row.get('DURATION_', '').max()
+                    # Групування по SEQUENCE_COUNTER_
+                    #logger.debug(camunda_row, variable_name=f"{level} camunda_row", max_lines=10)
+                    grouped = camunda_row.groupby('SEQUENCE_COUNTER_').agg({
+                        'DURATION_': 'max',
+                        'SEQUENCE_COUNTER_': 'max',
+                        'TASK_ID_': lambda x: x.iloc[0] if x.notna().any() else ''  # Беремо випадковий TASK_ID_ задачі, що мала декілька виконань. Тут втрачаємо деталі по повторних задачах
                     })
-                else:
-                    graph.nodes[node_id].update({
-                        'ACT_TYPE_': camunda_row.get('ACT_TYPE_', ''),
-                        'SEQUENCE_COUNTER_': camunda_row.get('SEQUENCE_COUNTER_', ''),
-                        'DURATION_': camunda_row.get('DURATION_', '')
-                    })
+                    #logger.debug(grouped, variable_name=f"{level} grouped", max_lines=10)
+                    # Логіка для технічних вузлів (без TASK_ID_)
+                    if grouped['TASK_ID_'].isnull().all():
+                        # Якщо TASK_ID_ відсутній, то це не користувацькі задачі - всі записи технічні, використовуємо MAX
+                        group_row = grouped.iloc[0]
+                        node_params = {
+                           # 'type':  camunda_row.get('ACT_TYPE_'),
+                            'DURATION_':  group_row.get('DURATION_', '').max(),
+                            'SEQUENCE_COUNTER_': group_row.get('SEQUENCE_COUNTER_', '').max(),
+                            'active_executions': len(grouped)  # Кількість виконань
+                        }
+                        #logger.debug(node_params, variable_name=f"{level} node_params", max_lines=10)
+                        graph.nodes[node_id].update(node_params)
+                    else:
+                        # Логіка для користувацьких вузлів із TASK_ID_
+                        for _, group_row in grouped.iterrows():
+                            task_id = group_row['TASK_ID_']
+                            if pd.notna(task_id):
+                                # Створюємо копію вузла для кожного TASK_ID_
+                                new_node_id = f"{node_id}_{task_id}"
+                                graph.add_node(new_node_id, **graph.nodes[node_id])
+                                node_params = {
+                                   # 'type':  camunda_row.get('ACT_TYPE_'),
+                                    'DURATION_': group_row['DURATION_'],
+                                    'SEQUENCE_COUNTER_': group_row['SEQUENCE_COUNTER_'],
+                                    'TASK_ID_': task_id,
+                                    'active_executions': 1
+                                }
+                                #logger.debug(node_params, variable_name=f"{level} node_USER_params", max_lines=10)
+                                graph.nodes[new_node_id].update(node_params)
 
-            # Мапимо задачі з bpm_tasks
-        tasks_mapping = bpm_tasks.set_index('TASK_DEF_KEY_')
-        for node_id in graph.nodes:
-            if node_id in tasks_mapping.index:
-                task_row = tasks_mapping.loc[node_id]
-                #logger.debug(task_row, variable_name="task_row", max_lines=3)
-         #       graph.nodes[node_id].update({
-         #           'task_subject': task_row.get('task_subject', ''),
-        #            'user_compl_login': task_row.get('user_compl_login', ''),
-         #           'taskaction_code': task_row.get('taskaction_code', ''),
-          #          'duration_work': task_row.get('duration_work', '')
-         #       })
+                                # Додаємо ребро від початкового вузла до нового
+                                #graph.add_edge(node_id, new_node_id)
+                else:
+                    # Якщо лише один запис, оновлюємо вузол напряму
+                    node_params = {
+                        key: value
+                        for key, value in {
+                            #'type':  camunda_row.get('ACT_TYPE_'),
+                            'DURATION_': camunda_row.get('DURATION_'),
+                            'SEQUENCE_COUNTER_': camunda_row.get('SEQUENCE_COUNTER_'),
+                            'TASK_ID_': camunda_row.get('TASK_ID_'),
+                            'active_executions': 1  # Це статичне значення завжди додається
+                        }.items()
+                        if pd.notna(value)  # Додаємо тільки значення, які існують
+                    }
+                    #logger.debug(node_params, variable_name=f"{level} node_NO_GROUP_params", max_lines=10)
+                    graph.nodes[node_id].update(node_params)
+
+          # Мапимо задачі з bpm_tasks щоб наповнити бізнес атрибутами
+        tasks_mapping = bpm_tasks.set_index('externalid')
+        for node_id, node_data in graph.nodes(data=True):
+            task_id = node_data.get('TASK_ID_')  # Отримуємо TASK_ID_ з атрибутів вузла
+            if task_id and task_id in tasks_mapping.index:  # Перевіряємо наявність TASK_ID_ у tasks_mapping
+                task_row = tasks_mapping.loc[task_id]
+                task_params = {
+                    key: (value.isoformat() if isinstance(value, pd.Timestamp) else value)
+                    for key, value in {
+                        'task_status': task_row.get('task_status'),
+                        'taskaction_code': task_row.get('taskaction_code'),
+                        'user_compl_login': task_row.get('user_compl_login'),
+                        'user_compl_position': task_row.get('user_compl_position'),
+                        'duration_work': task_row.get('duration_work')
+                    }.items()
+                    if pd.notna(value)  # Додаємо тільки значення, які існують
+                }
+                #logger.debug(task_params, variable_name=f"{level} task_params", max_lines=10)
+                graph.nodes[node_id].update(task_params)
 
         # Додаємо ребра (sequenceFlow) з атрибутами
         for edge in edges:
@@ -217,6 +347,9 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
 
         # Додаємо підпроцеси
         for node_id, attr in nodes.items():
+            #break
+            if level > 1:  #тимчасово обмежуємо лише на 1 рівень рекурсії
+                break
             if attr.get('type') == 'callActivity' and 'calledElement' in attr:
                 subprocess_key = attr['calledElement']
                 #logger.debug(subprocess_key, variable_name="subprocess_key")
@@ -240,6 +373,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                 if not subprocess_bpmn_model:
                     logger.warning(f"BPMN модель відсутня для підпроцесу з ключем {subprocess_key}.")
                     continue
+                logger.info(f"Побудова графа для підпроцесу {subprocess_row['ID_']} з ключем {subprocess_key}.")
 
                 subprocess_graph = build_process_graph(
                     subprocess_bpmn_model,
@@ -253,6 +387,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                     # Знаходимо вхідні та вихідні вузли в підпроцесі
                     start_nodes = [n for n, d in subprocess_graph.in_degree() if d == 0]
                     end_nodes = [n for n, d in subprocess_graph.out_degree() if d == 0]
+                    logger.debug(start_nodes, variable_name=f"{level} start_nodes")
 
                     # Замінюємо тип стартових подій підпроцесу
                     for start_node in start_nodes:
@@ -261,7 +396,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                     for end_node in end_nodes:
                         if subprocess_graph.nodes[end_node].get('type') == 'endEvent':
                             subprocess_graph.nodes[end_node]['type'] = 'endEventsp'
-
+                    visualize_graph_with_dot(subprocess_graph)
                     # Отримуємо попередники та наступники вузла callActivity
                     predecessors = list(graph.predecessors(node_id))
                     successors = list(graph.successors(node_id))
@@ -285,8 +420,10 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                 else:
                     logger.warning(f"Не вдалося побудувати граф для підпроцесу з ключем {subprocess_key}.")
 
-        logger.info("Граф успішно побудований.")
+        logger.info(f"Граф для {proc_id} успішно побудований.")
         return graph
     except Exception as e:
         logger.error(f"Помилка побудови графа: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
+

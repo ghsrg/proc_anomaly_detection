@@ -5,6 +5,7 @@ from src.modules.graph_processing import build_graph_for_group
 from src.config.config import GRAPH_PATH
 from src.utils.file_utils import read_from_parquet, save_graph, save_graph_to_zip, save_graph_pic
 from src.utils.visualizer import visualize_graph_with_dot
+import traceback
 
 logger = get_logger(__name__)
 
@@ -34,6 +35,7 @@ def select_document_definition(doc_definitions, caption_filter=None):
         return selected_doc_def_id
     except Exception as e:
         logger.error(f"Помилка під час вибору дефініції документа: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
@@ -62,6 +64,7 @@ def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
         return selected_documents
     except Exception as e:
         logger.error(f"Помилка під час отримання документів для дефініції: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 def get_process_instances(doc_id_list, processes):
@@ -90,6 +93,7 @@ def get_process_instances(doc_id_list, processes):
         return result
     except Exception as e:
         logger.error(f"Помилка під час отримання екземплярів процесів: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 def group_process_instances_by_root(process_instances,camunda_instances ):
@@ -122,6 +126,7 @@ def group_process_instances_by_root(process_instances,camunda_instances ):
         return result
     except Exception as e:
         logger.error(f"Помилка під час групування екземплярів процесів: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
@@ -155,6 +160,7 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
 
     except Exception as e:
         logger.error(f"Помилка під час доповнення груп екземплярів процесів BPMN моделями: {e}")
+        logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
 
@@ -178,7 +184,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643937678])
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003641881043])
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -217,7 +223,7 @@ def analyze_documents(caption_filter=None):
     # будуємо граф для процесів, враховуючі деталі по задачам
     bpm_tasks = read_from_parquet("bpm_tasks")
     camunda_tasks = read_from_parquet("act_hi_taskinst", columns=["ID_", "TASK_DEF_KEY_"])
-    camunda_actions = read_from_parquet("act_inst", columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_", "ROOT_PROC_INST_ID_", "PROC_INST_ID_"])
+    camunda_actions = read_from_parquet("act_inst", columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_", "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_"])
     #logger.debug(camunda_actions, variable_name="camunda_actions", max_lines=3)
 
     enriched_tasks = bpm_tasks.merge(
@@ -228,10 +234,14 @@ def analyze_documents(caption_filter=None):
     )
     grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions)
 
-    #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=3)
+    #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
 
     ###########################
     # зберігаємо отримані графи
+    if not grouped_graph:
+        logger.error("Не вдалося зберегти групи графів через відсутність grouped_graph.")
+        return
+
     for doc_id, root_graphs in grouped_graph.items():
         for root_proc_id, graph in root_graphs.items():
             file_name = f"{doc_id}_{root_proc_id}"
@@ -242,6 +252,8 @@ def analyze_documents(caption_filter=None):
                 #logger.info(f"Граф збережено: {GRAPH_PATH}")
             except Exception as e:
                 logger.error(f"Не вдалося зберегти граф {file_name}: {e}")
+                logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
+
 
     if not grouped_instances:
         logger.warning("Аналіз перервано через відсутність груп екземплярів процесів.")

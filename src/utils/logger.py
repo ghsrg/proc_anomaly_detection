@@ -84,6 +84,7 @@ class CustomLogger(logging.Logger):
                 for key, value in list(msg.items())[:max_lines]:
                     msg_details.append(f"{key}: {analyze_structure(value, level=1, max_depth=3)}")
             # Якщо це DataFrame, виводимо завжди, навіть як значення в словнику
+                msg_details.append("_____________\n")
             elif isinstance(msg, pd.DataFrame):
                 # Виведення назв колонок
                 msg_details.append(f"Колонки DataFrame: {list(msg.columns)}")
@@ -91,9 +92,11 @@ class CustomLogger(logging.Logger):
                 #msg_details.append(f"Типи даних у кожному стовпці: {msg.dtypes}")
                 # Виведення перших кількох рядків
                 msg_details.append(f"Структура DataFrame (перші {max_lines} рядків):\n{msg.head(max_lines)}")
+                msg_details.append("\n_____________\n")
             # Якщо це граф NetworkX
             elif isinstance(msg, nx.Graph):
                 msg_details.append(f"Граф NetworkX: {analyze_structure(msg, level=1, max_depth=3)}")
+                msg_details.append("\n_____________\n")
             else:
                 formatted_value = pformat(msg, indent=4, depth=depth)
 
@@ -102,8 +105,9 @@ class CustomLogger(logging.Logger):
                     formatted_value = "\n".join(formatted_value.splitlines()[:max_lines])
 
                 msg_details.append(f"Значення:\n{formatted_value}")
-
+                msg_details.append("\n_____________\n")
             msg = "\n".join(msg_details)
+
 
         try:
             super().debug(msg.encode('utf-8').decode('utf-8'), *args)

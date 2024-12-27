@@ -1,6 +1,8 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from src.utils.logger import get_logger
+from src.utils.graph_utils import clean_graph
+import pandas as pd
 
 logger = get_logger(__name__)
 
@@ -15,6 +17,7 @@ def visualize_graph_with_dot(graph, file_path=None):
     """
 
     # Використовуємо layout від Graphviz з алгоритмом 'dot'
+    #graph = clean_graph(graph)
     pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
     plt.figure(figsize=(15, 10))
@@ -25,12 +28,18 @@ def visualize_graph_with_dot(graph, file_path=None):
 
     for node, data in graph.nodes(data=True):
         # Отримуємо ідентифікатор/назву
+        #logger.debug(node, variable_name="node", max_lines=30)
+        #logger.debug(data, variable_name="date", max_lines=30)
+        #logger.debug(data.get('type', ''), variable_name="node_type", max_lines=3)
         bpmn_name = data.get('name', node)
-        node_type = data.get('type', '').lower()
+        node_type = data.get('type', '')
+        if isinstance(node_type, pd.Series):
+            node_type = node_type.iloc[0]  # Візьмемо перше значення
+        node_type = node_type.lower() if isinstance(node_type, str) else ''
 
         # Формуємо підпис
         label_text = bpmn_name
-        node_labels[node] = label_text
+        node_labels[node] = f"{label_text}_{node}"
         #logger.debug(node_type, variable_name="node_type", max_lines=3)
         # Фарбуємо "заливку" вузла
         if 'starteventsp' in node_type:
@@ -54,8 +63,8 @@ def visualize_graph_with_dot(graph, file_path=None):
         elif node_type in ['boundaryevent']:
             fill_colors.append('#e7d0f7')
         else:
-            if node_type:
-                logger.debug(node_type, variable_name="node_type", max_lines=3)
+            #if node_type:
+                #logger.debug(node_type, variable_name="node_type", max_lines=3)
             fill_colors.append('lightblue')
 
         # Якщо SEQUENCE_COUNTER_ існує й не порожній, обводка чорна, інакше "none"
