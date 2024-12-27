@@ -1,5 +1,6 @@
 import logging
 from colorama import Fore, Style, init
+import xml.etree.ElementTree as ET
 from src.config.config import APP_LOG_FILE, ERROR_LOG_FILE, LOG_LEVEL, LOG_TO_SCREEN
 from pprint import pformat
 import networkx as nx
@@ -47,7 +48,7 @@ class CustomLogger(logging.Logger):
             ]
 
             # Рекурсивна функція для перевірки типів елементів в структурі
-            def analyze_structure(data, level=1, max_depth=3):
+            def analyze_structure(data, level=3, max_depth=10):
                 """
                 Рекурсивно аналізує структуру даних (словники, списки, тощо).
                 :param data: Дані для аналізу.
@@ -96,6 +97,17 @@ class CustomLogger(logging.Logger):
             # Якщо це граф NetworkX
             elif isinstance(msg, nx.Graph):
                 msg_details.append(f"Граф NetworkX: {analyze_structure(msg, level=1, max_depth=3)}")
+                msg_details.append("\n_____________\n")
+            elif isinstance(msg, ET.Element):
+                # Обробка XML Element
+                children = list(msg)
+                msg_details.append(f"Тип: <class 'xml.etree.ElementTree.Element'>")
+                msg_details.append(f"Довжина: {len(children)}")  # Кількість дочірніх елементів
+                msg_details.append("Значення:")
+                #msg_details.append(f"  Тег: {msg.tag}")
+                msg_details.append(f"  Атрибути: {msg.attrib}")
+                if children:
+                    msg_details.append(f"  Перший дочірній тег: {children[0].attrib}")
                 msg_details.append("\n_____________\n")
             else:
                 formatted_value = pformat(msg, indent=4, depth=depth)

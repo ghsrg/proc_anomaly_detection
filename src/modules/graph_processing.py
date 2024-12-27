@@ -29,7 +29,6 @@ def parse_bpmn_and_find_elements(bpmn_model):
             'edges': []
         }
 
-        # Теги активних елементів BPMN
         node_tags = [
             'task', 'userTask', 'scriptTask', 'serviceTask',
             'startEvent', 'endEvent', 'intermediateThrowEvent',
@@ -39,48 +38,62 @@ def parse_bpmn_and_find_elements(bpmn_model):
             'complexGateway', 'eventBasedGateway'
         ]
 
-        def parse_subprocess(subprocess_element, parent_id=None):
-            """
-            Рекурсивний парсинг елементів всередині subProcess.
-            """
-            subprocess_id = subprocess_element.attrib.get('id')
+        # Додавання вузлів і потоків до елементів
+        for process in root.findall('.//bpmn:process', namespace):
+            for element in process:
+                tag = element.tag.split('}')[-1]
+                node_id = element.attrib.get('id')
+                if not node_id:
+                    continue
 
+                # Додаємо вузли
+                if tag in node_tags:
+                    node_name = element.attrib.get('name', tag)
+                    elements['nodes'][node_id] = {
+                        'type': tag,
+                        'name': node_name
+                    }
+
+                # Додаємо потоки
+                if tag == 'sequenceFlow':
+                    source_ref = element.attrib.get('sourceRef')
+                    target_ref = element.attrib.get('targetRef')
+                    edge_id = element.attrib.get('id')
+                    if not (source_ref and target_ref and edge_id):
+                        continue
+
+                    flow_name = element.attrib.get('name', '')
+                    elements['edges'].append({
+                        'source': source_ref,
+                        'target': target_ref,
+                        'attributes': {
+                            'id': edge_id,
+                            'name': flow_name
+                        }
+                    })
+
+        def process_subprocess(subprocess_element, parent_id):
+            """
+            Рекурсивна обробка підпроцесів та їх інтеграція в глобальний граф.
+            """
+            subprocess_nodes = {}
+            subprocess_edges = []
+
+            # Зчитуємо вузли підпроцесу
             for element in subprocess_element:
                 tag = element.tag.split('}')[-1]
                 node_id = element.attrib.get('id')
                 if not node_id:
-                    continue  # Пропускаємо елементи без ідентифікатора
+                    continue
 
                 if tag in node_tags:
                     node_name = element.attrib.get('name', tag)
-                    node_type = tag
-                    node_info = {
-                        'type': node_type,
+                    subprocess_nodes[node_id] = {
+                        'type': tag,
                         'name': node_name
                     }
 
-                    if tag == 'callActivity':
-                        node_info['calledElement'] = element.attrib.get('calledElement', '')
-
-                    if tag == 'boundaryEvent':
-                        node_info['attachedToRef'] = element.attrib.get('attachedToRef', '')
-
-                    elements['nodes'][node_id] = node_info
-
-                    if parent_id:
-                        # Додаємо ребро від батьківського вузла до стартового вузла subprocess
-                        elements['edges'].append({
-                            'source': parent_id,
-                            'target': node_id,
-                            'attributes': {
-                                'type': 'subprocess'
-                            }
-                        })
-
-                if tag == 'subProcess':
-                    parse_subprocess(element, parent_id=node_id)
-
-            # Збираємо sequenceFlow всередині subprocess
+            # Збираємо потоки підпроцесу
             for sequence_flow in subprocess_element.findall('.//bpmn:sequenceFlow', namespace):
                 source_ref = sequence_flow.attrib.get('sourceRef')
                 target_ref = sequence_flow.attrib.get('targetRef')
@@ -89,21 +102,45 @@ def parse_bpmn_and_find_elements(bpmn_model):
                     continue
 
                 flow_name = sequence_flow.attrib.get('name', '')
-                condition_expr = ''
-                cond_elem = sequence_flow.find('.//bpmn:conditionExpression', namespace)
-                if cond_elem is not None and cond_elem.text:
-                    condition_expr = cond_elem.text.strip()
-
-                elements['edges'].append({
+                subprocess_edges.append({
                     'source': source_ref,
                     'target': target_ref,
                     'attributes': {
                         'id': edge_id,
-                        'name': flow_name,
-                        'conditionExpression': condition_expr
+                        'name': flow_name
                     }
                 })
 
+            start_nodes = [n for n in subprocess_nodes if not any(e['target'] == n for e in subprocess_edges)]
+            end_nodes = [n for n in subprocess_nodes if not any(e['source'] == n for e in subprocess_edges)]
+
+            # Замінюємо типи вузлів startEvent і endEvent для підпроцесів
+            for start_node in start_nodes:
+                if subprocess_nodes[start_node]['type'] == 'startEvent':
+                    subprocess_nodes[start_node]['type'] = 'startEventsp'
+
+            for end_node in end_nodes:
+                if subprocess_nodes[end_node]['type'] == 'endEvent':
+                    subprocess_nodes[end_node]['type'] = 'endEventsp'
+
+            # Отримуємо <incoming> та <outgoing> вузли підпроцесу
+            incoming_links = [incoming.text for incoming in subprocess_element.findall('bpmn:incoming', namespace)]
+            outgoing_links = [outgoing.text for outgoing in subprocess_element.findall('bpmn:outgoing', namespace)]
+
+            # Видаляємо вузол subProcess з основного графа
+            elements['nodes'].pop(parent_id, None)
+
+            # Оновлюємо потоки у глобальному контексті
+            for edge in elements['edges']:
+                if edge['attributes']['id'] in incoming_links:
+                    edge['target'] = start_nodes[0] if start_nodes else edge['target']  # Замінюємо target
+                if edge['attributes']['id'] in outgoing_links:
+                    edge['source'] = end_nodes[0] if end_nodes else edge['source']  # Замінюємо source
+
+
+            return subprocess_nodes, subprocess_edges
+
+        # Обробка підпроцесів
         for process in root.findall('.//bpmn:process', namespace):
             for element in process:
                 tag = element.tag.split('}')[-1]
@@ -111,48 +148,10 @@ def parse_bpmn_and_find_elements(bpmn_model):
                 if not node_id:
                     continue
 
-                if tag in node_tags:
-                    node_name = element.attrib.get('name', tag)
-                    node_type = tag
-                    node_info = {
-                        'type': node_type,
-                        'name': node_name
-                    }
-
-                    if tag == 'callActivity':
-                        node_info['calledElement'] = element.attrib.get('calledElement', '')
-
-                    if tag == 'boundaryEvent':
-                        node_info['attachedToRef'] = element.attrib.get('attachedToRef', '')
-
-                    elements['nodes'][node_id] = node_info
-
                 if tag == 'subProcess':
-                    parse_subprocess(element, parent_id=node_id)
-
-        # Збираємо sequenceFlow на верхньому рівні
-        for sequence_flow in root.findall('.//bpmn:sequenceFlow', namespace):
-            source_ref = sequence_flow.attrib.get('sourceRef')
-            target_ref = sequence_flow.attrib.get('targetRef')
-            edge_id = sequence_flow.attrib.get('id')
-            if not (source_ref and target_ref and edge_id):
-                continue
-
-            flow_name = sequence_flow.attrib.get('name', '')
-            condition_expr = ''
-            cond_elem = sequence_flow.find('.//bpmn:conditionExpression', namespace)
-            if cond_elem is not None and cond_elem.text:
-                condition_expr = cond_elem.text.strip()
-
-            elements['edges'].append({
-                'source': source_ref,
-                'target': target_ref,
-                'attributes': {
-                    'id': edge_id,
-                    'name': flow_name,
-                    'conditionExpression': condition_expr
-                }
-            })
+                    subprocess_nodes, subprocess_edges = process_subprocess(element, node_id)
+                    elements['nodes'].update(subprocess_nodes)
+                    elements['edges'].extend(subprocess_edges)
 
         return elements
     except Exception as e:
@@ -181,6 +180,7 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
 
                 # Знаходимо рядок із BPMN
                 root_process_row = root_group[root_group['ID_'] == root_proc_id]
+                root_process_row = root_group[root_group['ID_'] == '981d87df-5588-11ef-86d8-0242ac111804' ]
                 if root_process_row.empty:
                     logger.warning(f"Нема кореневого процесу в групі: {root_proc_id}")
                     continue
@@ -347,34 +347,26 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
 
         # Додаємо підпроцеси
         for node_id, attr in nodes.items():
-            #break
-            if level > 1:  #тимчасово обмежуємо лише на 1 рівень рекурсії
-                break
             if attr.get('type') == 'callActivity' and 'calledElement' in attr:
                 subprocess_key = attr['calledElement']
-                #logger.debug(subprocess_key, variable_name="subprocess_key")
-                #logger.debug(group, variable_name="group")
 
-                # Перевірка наявності колонки 'KEY_'
                 if 'KEY_' not in group.columns:
-                    logger.warning(
-                        f"Колонка 'KEY_' відсутня у групі для підпроцесу з ключем {subprocess_key}. Підпроцес буде пропущений."
-                    )
+                    logger.warning(f"Колонка 'KEY_' відсутня для підпроцесу {subprocess_key}. Пропускаємо.")
                     continue
 
                 matching_subprocess = group[group['KEY_'] == subprocess_key]
                 if matching_subprocess.empty:
-                    logger.warning(f"Не знайдено підпроцес з ключем {subprocess_key}. Підпроцес буде пропущений.")
+                    logger.warning(f"Не знайдено підпроцес {subprocess_key}. Пропускаємо.")
                     continue
 
                 subprocess_row = matching_subprocess.iloc[0]
                 subprocess_bpmn_model = subprocess_row.get('bpmn_model')
 
                 if not subprocess_bpmn_model:
-                    logger.warning(f"BPMN модель відсутня для підпроцесу з ключем {subprocess_key}.")
+                    logger.warning(f"Немає моделі для підпроцесу {subprocess_key}.")
                     continue
-                logger.info(f"Побудова графа для підпроцесу {subprocess_row['ID_']} з ключем {subprocess_key}.")
 
+                # Створюємо граф для підпроцесу
                 subprocess_graph = build_process_graph(
                     subprocess_bpmn_model,
                     subprocess_row['ID_'],
@@ -384,27 +376,18 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                 )
 
                 if subprocess_graph:
-                    # Знаходимо вхідні та вихідні вузли в підпроцесі
+                    # Знаходимо стартові та кінцеві вузли підпроцесу
                     start_nodes = [n for n, d in subprocess_graph.in_degree() if d == 0]
                     end_nodes = [n for n, d in subprocess_graph.out_degree() if d == 0]
-                    logger.debug(start_nodes, variable_name=f"{level} start_nodes")
-
-                    # Замінюємо тип стартових подій підпроцесу
-                    for start_node in start_nodes:
-                        if subprocess_graph.nodes[start_node].get('type') == 'startEvent':
-                            subprocess_graph.nodes[start_node]['type'] = 'startEventsp'
-                    for end_node in end_nodes:
-                        if subprocess_graph.nodes[end_node].get('type') == 'endEvent':
-                            subprocess_graph.nodes[end_node]['type'] = 'endEventsp'
                     visualize_graph_with_dot(subprocess_graph)
-                    # Отримуємо попередники та наступники вузла callActivity
+
                     predecessors = list(graph.predecessors(node_id))
                     successors = list(graph.successors(node_id))
 
                     # Видаляємо вузол callActivity
                     graph.remove_node(node_id)
 
-                    # Додаємо вузли та ребра підпроцесу до головного графа
+                    # Додаємо вузли та зв'язки підпроцесу
                     graph = nx.compose(graph, subprocess_graph)
 
                     # З'єднуємо вхідні вузли підпроцесу з попередниками callActivity
@@ -418,7 +401,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                             graph.add_edge(end_node, succ)
 
                 else:
-                    logger.warning(f"Не вдалося побудувати граф для підпроцесу з ключем {subprocess_key}.")
+                    logger.warning(f"Не вдалося побудувати граф для підпроцесу {subprocess_key}.")
 
         logger.info(f"Граф для {proc_id} успішно побудований.")
         return graph
@@ -427,3 +410,11 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
+  # Замінюємо тип стартових подій підпроцесу
+                   #for start_node in start_nodes:
+                   #    if subprocess_graph.nodes[start_node].get('type') == 'startEvent':
+                   #        subprocess_graph.nodes[start_node]['type'] = 'startEventsp'
+                   #for end_node in end_nodes:
+                   #    if subprocess_graph.nodes[end_node].get('type') == 'endEvent':
+                   #        subprocess_graph.nodes[end_node]['type'] = 'endEventsp'
+                   #
