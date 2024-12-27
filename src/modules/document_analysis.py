@@ -184,7 +184,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003641881043])
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003632191514])
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")

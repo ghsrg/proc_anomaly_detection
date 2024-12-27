@@ -17,7 +17,7 @@ def clean_graph(graph):
 
         # Перевіряємо умови для видалення
         if node_type not in ['startevent', 'endevent','endeventsp','starteventsp'] and (active_executions is None or active_executions == 0):
-            logger.debug(attrs, variable_name="attrs", max_lines=10)
+            #logger.debug(attrs, variable_name="attrs", max_lines=10)
             nodes_to_remove.append(node_id)
 
     # Видаляємо вузли та їхні зв'язки
@@ -27,7 +27,7 @@ def clean_graph(graph):
 
 
 def inspect_graph(graph):
-    logger.info(f" Інспектація графа ...")
+    #logger.info(f" Інспектація графа ...")
     for node, attrs in graph.nodes(data=True):
         for key, value in attrs.items():
             if isinstance(value, pd.Series):

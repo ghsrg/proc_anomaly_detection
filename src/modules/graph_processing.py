@@ -5,6 +5,7 @@ from src.utils.visualizer import visualize_graph, visualize_graph_with_dot
 from src.utils.graph_utils import inspect_graph
 import pandas as pd
 import inspect
+from collections import Counter
 import traceback
 
 logger = get_logger(__name__)
@@ -217,7 +218,7 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
                 # Можна візуалізувати відразу або окремо
                 from src.utils.graph_utils import clean_graph
                 inspect_graph(graph)
-                visualize_graph_with_dot(graph)
+                #visualize_graph_with_dot(graph)
 
             if doc_graphs:
                 result_graphs[doc_id] = doc_graphs
@@ -240,7 +241,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
     :return: networkx.DiGraph
     """
     level = len(inspect.stack()) - 5  # Рівень стека
-    print(level)
+    #print(level)
     try:
         graph = nx.DiGraph()
         elements = parse_bpmn_and_find_elements(bpmn_model)
@@ -253,14 +254,34 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         # Додаємо вузли з BPMN
         for node_id, attr in nodes.items():
             attr['active_executions'] = 0  # Додаємо атрибут кількість виконань зі значенням 0
-            graph.add_node(node_id, **attr)
+            if node_id in graph.nodes:
+                logger.warning(f"Дублювання вузла з ідентифікатором: {node_id}")
+            else:
+                graph.add_node(node_id, **attr)
 
         # Зв'язуємо boundary events та інші
         for node_id, attr in nodes.items():
             attached_to = attr.get('attachedToRef')  # Шукаємо вузол, до якого прив'язаний елемент
             if attached_to and attached_to in graph.nodes:
                 # Додаємо ребро між вузлом-власником і прив'язаним елементом
-                graph.add_edge(attached_to, node_id, type='attached')
+                if graph.has_edge(attached_to, node_id):
+                    logger.warning(f"Дублювання зв'язку між {attached_to} і {node_id}")
+                else:
+                    graph.add_edge(attached_to, node_id, type='attached')
+
+        # Додаємо ребра (sequenceFlow) з атрибутами
+        for edge in edges:
+            source = edge['source']
+            target = edge['target']
+            attrs = edge.get('attributes', {})
+
+            source_node = graph.nodes.get(source, {})
+            target_node = graph.nodes.get(target, {})
+            attrs.update({
+                'DURATION_': source_node.get('DURATION_', ''),
+                'duration_work': target_node.get('duration_work', '')
+            })
+            graph.add_edge(source, target, **attrs)
 
             # Мапимо дії з Camunda, щоб визначити що виконувалось, та як
         filtered_camunda_actions = camunda_actions[camunda_actions['PROC_INST_ID_'] == proc_id]
@@ -279,9 +300,9 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         'TASK_ID_': lambda x: x.iloc[0] if x.notna().any() else ''
                         # Беремо випадковий TASK_ID_ задачі, що мала декілька виконань. Тут втрачаємо деталі по повторних задачах
                     })
-                    # logger.debug(grouped, variable_name=f"{level} grouped", max_lines=10)
+                    #logger.debug(grouped, variable_name=f"{level} grouped", max_lines=10)
                     # Логіка для технічних вузлів (без TASK_ID_)
-                    if grouped['TASK_ID_'].isnull().all():
+                    if grouped['TASK_ID_'].isnull().all() or (grouped['TASK_ID_'] == '').all():
                         # Якщо TASK_ID_ відсутній, то це не користувацькі задачі - всі записи технічні, використовуємо MAX
                         group_row = grouped.iloc[0]
                         node_params = {
@@ -294,24 +315,42 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         graph.nodes[node_id].update(node_params)
                     else:
                         # Логіка для користувацьких вузлів із TASK_ID_
-                        for _, group_row in grouped.iterrows():
+                        # Оновлюємо перший вузол
+                        first_row = grouped.iloc[0]
+                        graph.nodes[node_id].update({
+                            'DURATION_': first_row['DURATION_'],
+                            'SEQUENCE_COUNTER_': first_row['SEQUENCE_COUNTER_'],
+                            'TASK_ID_': first_row['TASK_ID_'],
+                            'active_executions': 1
+                        })
+                        # Додаємо решту вузлів
+                        for _, group_row in grouped.iloc[1:].iterrows():
                             task_id = group_row['TASK_ID_']
                             if pd.notna(task_id):
-                                # Створюємо копію вузла для кожного TASK_ID_
+                                # Створюємо унікальний ID для нового вузла
                                 new_node_id = f"{node_id}_{task_id}"
+
+                                # Копіюємо вузол із новим ID
                                 graph.add_node(new_node_id, **graph.nodes[node_id])
+
+                                # Оновлюємо параметри вузла
                                 node_params = {
-                                    # 'type':  camunda_row.get('ACT_TYPE_'),
                                     'DURATION_': group_row['DURATION_'],
                                     'SEQUENCE_COUNTER_': group_row['SEQUENCE_COUNTER_'],
                                     'TASK_ID_': task_id,
                                     'active_executions': 1
                                 }
-                                # logger.debug(node_params, variable_name=f"{level} node_USER_params", max_lines=10)
                                 graph.nodes[new_node_id].update(node_params)
 
-                                # Додаємо ребро від початкового вузла до нового
-                                # graph.add_edge(node_id, new_node_id)
+                                # Копіюємо вхідні зв'язки
+                                for predecessor in graph.predecessors(node_id):
+                                    if not graph.has_edge(predecessor, new_node_id):
+                                        graph.add_edge(predecessor, new_node_id, **graph.edges[predecessor, node_id])
+
+                                # Копіюємо вихідні зв'язки
+                                for successor in graph.successors(node_id):
+                                    if not graph.has_edge(new_node_id, successor):
+                                        graph.add_edge(new_node_id, successor, **graph.edges[node_id, successor])
                 else:
                     # Якщо лише один запис, оновлюємо вузол напряму
                     node_params = {
@@ -329,6 +368,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                     graph.nodes[node_id].update(node_params)
 
         # Мапимо задачі з bpm_tasks, щоб наповнити бізнес атрибутами
+
         tasks_mapping = bpm_tasks.set_index('externalid')
         for node_id, node_data in graph.nodes(data=True):
             task_id = node_data.get('TASK_ID_')  # Отримуємо TASK_ID_ з атрибутів вузла
@@ -348,19 +388,6 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                 # logger.debug(task_params, variable_name=f"{level} task_params", max_lines=10)
                 graph.nodes[node_id].update(task_params)
 
-        # Додаємо ребра (sequenceFlow) з атрибутами
-        for edge in edges:
-            source = edge['source']
-            target = edge['target']
-            attrs = edge.get('attributes', {})
-
-            source_node = graph.nodes.get(source, {})
-            target_node = graph.nodes.get(target, {})
-            attrs.update({
-                'DURATION_': source_node.get('DURATION_', ''),
-                'duration_work': target_node.get('duration_work', '')
-            })
-            graph.add_edge(source, target, **attrs)
 
         # Обробка callActivity
         for node_id, attr in nodes.items():
@@ -400,8 +427,21 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                     }
                     extprocess_graph = nx.relabel_nodes(extprocess_graph, mapping)
 
-                    start_nodes = [n for n, d in extprocess_graph.in_degree() if d == 0]
-                    end_nodes = [n for n, d in extprocess_graph.out_degree() if d == 0]
+                    start_nodes = [
+                        n for n, d in extprocess_graph.in_degree()
+                        if d == 0 and extprocess_graph.nodes[n].get('type') == 'startEvent'
+                    ]
+                    end_nodes = [
+                        n for n, d in extprocess_graph.out_degree()
+                        if d == 0 and extprocess_graph.nodes[n].get('type') == 'endEvent'
+                    ]
+
+                    for start_node in start_nodes:
+                        if extprocess_graph.nodes[start_node].get('type') == 'startEvent':
+                            extprocess_graph.nodes[start_node]['type'] = 'startEventsp'
+                    for end_node in end_nodes:
+                        if extprocess_graph.nodes[end_node].get('type') == 'endEvent':
+                            extprocess_graph.nodes[end_node]['type'] = 'endEventsp'
 
                     predecessors = list(graph.predecessors(node_id))
                     successors = list(graph.successors(node_id))
@@ -410,17 +450,21 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
 
                     graph.update(extprocess_graph)
 
+                    # Уникаємо дублювання зв'язків
                     for pred in predecessors:
                         for start_node in start_nodes:
-                            graph.add_edge(pred, start_node)
+                            if not graph.has_edge(pred, start_node):
+                                graph.add_edge(pred, start_node)
 
                     for succ in successors:
                         for end_node in end_nodes:
-                            graph.add_edge(end_node, succ)
+                            if not graph.has_edge(end_node, succ):
+                                graph.add_edge(end_node, succ)
 
                 else:
                     logger.warning(f"Не вдалося побудувати граф для зовнішнього процесу {extprocess_key}.")
-        visualize_graph_with_dot(graph)
+
+        #visualize_graph_with_dot(graph)
         logger.info(f"Граф для {proc_id} успішно побудований.")
         return graph
     except Exception as e:

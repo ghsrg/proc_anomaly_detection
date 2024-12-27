@@ -20,7 +20,7 @@ def visualize_graph_with_dot(graph, file_path=None):
     graph = clean_graph(graph)
     pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
-    plt.figure(figsize=(15, 10))
+    plt.figure(figsize=(140, 90))
 
     node_labels = {}
     fill_colors = []
@@ -39,7 +39,8 @@ def visualize_graph_with_dot(graph, file_path=None):
 
         # Формуємо підпис
         label_text = bpmn_name
-        node_labels[node] = f"{label_text}_{node}"
+        #node_labels[node] = f"{label_text}#_{node}"
+        node_labels[node] = f"{label_text}"
         #logger.debug(node_type, variable_name="node_type", max_lines=3)
         # Фарбуємо "заливку" вузла
         if 'starteventsp' in node_type:
@@ -96,11 +97,11 @@ def visualize_graph_with_dot(graph, file_path=None):
         node_color=fill_colors,
         edgecolors=border_colors,
         with_labels=True,
-        node_size=1200,
-        font_size=6,
+        node_size=8000,
+        font_size=8,
         edge_color='gray',
         arrows=True,
-        arrowsize=12
+        arrowsize=30
     )
 
     # Підписи на ребрах
