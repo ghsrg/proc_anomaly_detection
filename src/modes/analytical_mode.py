@@ -4,7 +4,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-def run_analytical_mode():
+def run_analytical_mode(args):
     """
     Заглушка для аналітичного режиму.
     """

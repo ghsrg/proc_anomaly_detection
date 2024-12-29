@@ -20,7 +20,7 @@ def create_project_structure(base_path):
         "requirements.txt": "pandas\nnumpy\nmatplotlib\ntensorflow\ntorch\nnetworkx\nscikit-learn\npyodbc\nrequests\ngym\n",
         "main.py": "if __name__ == '__main__':\n    print('Проєкт успішно запущено!')\n",
         "src/core/data_processing.py": "import pandas as pd\n\n# Завантаження та обробка даних\n",
-        "src/core/graph_processing.py": "# Побудова графа для GNN\n",
+        "src/core/graph_creator.py": "# Побудова графа для GNN\n",
         "src/core/autoencoder.py": "# Реалізація автоенкодера\n",
         "src/core/gnn.py": "# Реалізація GNN\n",
         "src/core/clustering.py": "# Кластеризація\n",

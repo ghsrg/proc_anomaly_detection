@@ -21,7 +21,6 @@ class ColorFormatter(logging.Formatter):
     }
 
     def format(self, record):
-        # Додаємо колір до всієї строки
         color = self.COLOR_MAP.get(record.levelno, Fore.WHITE)
         log_message = super().format(record)
         return f"{color}{log_message}{Style.RESET_ALL}"

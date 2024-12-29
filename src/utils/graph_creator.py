@@ -202,7 +202,7 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
                 root_process_row = root_group[root_group['ID_'] == root_proc_id]
                # root_process_row = root_group[root_group['ID_'] == '981d87df-5588-11ef-86d8-0242ac111804' ]
                 if root_process_row.empty:
-                    logger.warning(f"Нема кореневого процесу в групі: {root_proc_id}")
+                    logger.warning(f"Немає кореневого процесу в групі: {root_proc_id}")
                     continue
 
                 bpmn_model = root_process_row['bpmn_model'].iloc[0]
@@ -258,7 +258,7 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
                             'ContractManager_user_login': str(row['ContractManager_user_login']),
                             'ManagerFunction_user_login': str(row['ManagerFunction_user_login'])
                         }
-                        logger.debug(doc_attr, variable_name=f"{doc_attr} camunda_row", max_lines=30)
+                        #logger.debug(doc_attr, variable_name=f"{doc_attr} camunda_row", max_lines=30)
                         graph.nodes[start_node].update(doc_attr)
                     else:
                         logger.warning(
@@ -355,6 +355,8 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         node_params = {
                             # 'type':  camunda_row.get('ACT_TYPE_'),
                             'DURATION_': group_row.get('DURATION_', '').max(),
+                            'START_TIME_': group_row.get('START_TIME_', ''),
+                            'END_TIME_': group_row.get('END_TIME_', ''),
                             'SEQUENCE_COUNTER_': group_row.get('SEQUENCE_COUNTER_', '').max(),
                             'active_executions': len(grouped)  # Кількість виконань
                         }
@@ -365,9 +367,11 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         # Оновлюємо перший вузол
                         first_row = grouped.iloc[0]
                         graph.nodes[node_id].update({
-                            'DURATION_': first_row['DURATION_'],
-                            'SEQUENCE_COUNTER_': first_row['SEQUENCE_COUNTER_'],
-                            'TASK_ID_': first_row['TASK_ID_'],
+                            'DURATION_': first_row.get('DURATION_',''),
+                            'START_TIME_': first_row.get('START_TIME_', ''),
+                            'END_TIME_': first_row.get('END_TIME_', ''),
+                            'SEQUENCE_COUNTER_': first_row.get('SEQUENCE_COUNTER_',''),
+                            'TASK_ID_': first_row.get('TASK_ID_',''),
                             'active_executions': 1
                         })
                         # Додаємо решту вузлів
@@ -382,8 +386,10 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
 
                                 # Оновлюємо параметри вузла
                                 node_params = {
-                                    'DURATION_': group_row['DURATION_'],
-                                    'SEQUENCE_COUNTER_': group_row['SEQUENCE_COUNTER_'],
+                                    'DURATION_': group_row.get('DURATION_',''),
+                                    'START_TIME_': group_row.get('START_TIME_', ''),
+                                    'END_TIME_': group_row.get('END_TIME_', ''),
+                                    'SEQUENCE_COUNTER_': group_row.get('SEQUENCE_COUNTER_',''),
                                     'TASK_ID_': task_id,
                                     'active_executions': 1
                                 }
@@ -405,6 +411,8 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         for key, value in {
                             # 'type':  camunda_row.get('ACT_TYPE_'),
                             'DURATION_': camunda_row.get('DURATION_'),
+                            'START_TIME_': camunda_row.get('START_TIME_', ''),
+                            'END_TIME_': camunda_row.get('END_TIME_', ''),
                             'SEQUENCE_COUNTER_': camunda_row.get('SEQUENCE_COUNTER_'),
                             'TASK_ID_': camunda_row.get('TASK_ID_'),
                             'active_executions': 1  # Це статичне значення завжди додається
@@ -429,6 +437,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         'user_compl_login': task_row.get('user_compl_login'),
                         'user_compl_position': task_row.get('user_compl_position'),
                         'first_view': task_row.get('first_view_compluser_date'),
+                        'overduet_work': task_row.get('overduet_work'),
                         'duration_work': task_row.get('duration_work')
                     }.items()
                     if pd.notna(value)  # Додаємо тільки значення, які існують
@@ -457,14 +466,14 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
             if attr.get('type') == 'callActivity' and 'calledElement' in attr:
                 extprocess_key = attr['calledElement']
                 if 'KEY_' not in group.columns:
-                    logger.warning(
+                    logger.debug(
                         f"Колонка 'KEY_' відсутня у групі для зовнішнього процесу з ключем {extprocess_key}. Процес буде пропущений."
                     )
                     continue
 
                 matching_extprocess = group[group['KEY_'] == extprocess_key]
                 if matching_extprocess.empty:
-                    logger.warning(f"Не знайдено зовнішнього процесу з ключем {extprocess_key}. Процес буде пропущений.")
+                    logger.debug(f"Не знайдено зовнішнього процесу з ключем {extprocess_key}. Процес буде пропущений.")
                     continue
 
                 extprocess_row = matching_extprocess.iloc[0]

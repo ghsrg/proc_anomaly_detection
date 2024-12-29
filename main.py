@@ -11,21 +11,25 @@ def main():
         # Парсинг аргументів командного рядка
         parser = argparse.ArgumentParser(description="Аналіз аномалій у бізнес-процесах.")
         parser.add_argument("--mode", type=str, required=True,
-                            help="Режим роботи: experimental, analytical, production")
-        parser.add_argument("--reload", action="store_true", default=False,
+                            help="Режим роботи: preparation , analytical, production")
+        parser.add_argument("--raw_reload", action="store_true", default=False,
                             help="Перезавантажити дані у raw (опціонально)")
+        parser.add_argument("--doc2graph", action="store_true", default=False,
+                            help="Проаналізувати документи й згенерувати первинні графи (опціонально)")
+        parser.add_argument("--graph_synthesis", action="store_true", default=False,
+                            help="Генерація додаткових графів для навчання (опціонально)")
         args = parser.parse_args()
 
         # Вибір режиму роботи
-        if args.mode == "experimental":
+        if args.mode == "preparation":
             logger.info("Запущено експериментальний режим.")
-            run_experimental_mode(args.reload)
+            run_experimental_mode(args)
         elif args.mode == "analytical":
             logger.info("Запущено аналітичний режим.")
-            run_analytical_mode()
+            run_analytical_mode(args)
         elif args.mode == "production":
             logger.info("Запущено режим виконання.")
-            run_production_mode()
+            run_production_mode(args)
         else:
             logger.error(f"Невідомий режим: {args.mode} Допустимі значення: experimental, analytical, production.")
 

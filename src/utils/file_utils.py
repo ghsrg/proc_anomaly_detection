@@ -1,9 +1,9 @@
 import pandas as pd
 import h5py
 import networkx as nx
-from src.utils.file_utils_l import make_dir, join_path
+from src.utils.file_utils_l import make_dir, join_path, is_file_exist
 from src.utils.logger import get_logger
-from src.config.config import RAW_PATH
+from src.config.config import RAW_PATH, REGISTER_PATH
 import gzip
 from pathlib import Path
 logger = get_logger(__name__)
@@ -25,7 +25,6 @@ def read_from_parquet(file_name: str, columns=None) -> pd.DataFrame:
     :param file_name: Назва файлу для завантаження.
     :return: DataFrame із завантаженими даними.
     """
-   # raw_data_path = os.path.join("data", "raw", f"{file_name}.parquet")
     raw_data_path = join_path([RAW_PATH, f"{file_name}.parquet"])
     df = pd.read_parquet(raw_data_path, engine="pyarrow", columns=columns)
     logger.info(f"Дані завантажено з {raw_data_path}")
@@ -137,3 +136,25 @@ def save_graph_pic(graph: nx.DiGraph, file_name: str, path: str, visualize_func)
         print(f"Помилка доступу до {path}: {e}")
     except Exception as e:
         print(f"Невідома помилка при збереженні графа {file_name}: {e}")
+
+def initialize_register(file_name: str, columns:['id']):
+    """Ініціалізує реєстр, якщо його ще не існує."""
+    file_path = join_path([REGISTER_PATH, f"{file_name}.parquet"])
+    if not is_file_exist(file_path):
+        df = pd.DataFrame(columns=columns)
+        df.to_parquet(file_path, index=False)
+
+def save_register(df: pd.DataFrame, file_name: str):
+    """Зберігає реєстр."""
+    reg_data_path = join_path([REGISTER_PATH, f"{file_name}.parquet"])
+    df.to_parquet(reg_data_path, engine="pyarrow", index=False)
+    logger.info(f"Дані збережено у {reg_data_path}")
+
+
+def load_register(file_name: str, columns=None) -> pd.DataFrame:
+    """Завантажує реєстр."""
+    reg_data_path = join_path([REGISTER_PATH, f"{file_name}.parquet"])
+    df = pd.read_parquet(reg_data_path, engine="pyarrow", columns=columns)
+    logger.info(f"Дані завантажено з {reg_data_path}")
+    return df
+

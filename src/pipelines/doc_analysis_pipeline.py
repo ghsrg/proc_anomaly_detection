@@ -1,10 +1,9 @@
 import pandas as pd
 from src.utils.logger import get_logger
-from src.utils.file_utils import read_from_parquet
-from src.modules.graph_processing import build_graph_for_group
+from src.utils.file_utils import save_register
+from src.utils.graph_creator import build_graph_for_group
 from src.config.config import GRAPH_PATH
-from src.utils.file_utils import read_from_parquet, save_graph, save_graph_to_zip, save_graph_pic
-from src.utils.visualizer import visualize_graph_with_dot
+from src.utils.file_utils import read_from_parquet, save_graph, load_register
 import traceback
 
 logger = get_logger(__name__)
@@ -138,9 +137,9 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
     """
     try:
         for doc_id, root_groups in grouped_instances.items():
-            logger.debug(f"Обробка документа ID: {doc_id}")
+            logger.info(f"Обробка документа ID: {doc_id}")
             for root_id, group in root_groups.items():
-                logger.debug(f"Обробка ROOT_PROC_INST_ID_: {root_id}")
+                logger.info(f"Обробка ROOT_PROC_INST_ID_: {root_id}")
 
                 # Використовуємо merge для додавання bpmn_model
                 group = group.merge(
@@ -184,7 +183,7 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643877955])
+    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643877955]) #3003643877955 # для дебага можемо вказати, який документ обробляти
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -244,18 +243,39 @@ def analyze_documents(caption_filter=None):
         logger.error("Не вдалося зберегти групи графів через відсутність grouped_graph.")
         return
 
+    graph_reg = load_register('graph_register')
+    graph_reg.set_index(['doc_id', 'root_proc_id'], inplace=True)  # Установлюємо індекс для унікальності
+
     for doc_id, root_graphs in grouped_graph.items():
         for root_proc_id, graph in root_graphs.items():
             file_name = f"{doc_id}_{root_proc_id}"
             try:
-                #save_graph_to_zip(graph, file_name, GRAPH_PATH)
+                # Збереження графа в файл
                 save_graph(graph, file_name, GRAPH_PATH)
-                #save_graph_pic(graph, file_name, GRAPH_PATH, visualize_graph_with_dot)
-                #logger.info(f"Граф збережено: {GRAPH_PATH}")
+
+                # Внесення даних про граф в реєстр graph_reg
+                new_record = pd.DataFrame([{
+                    'doc_id': doc_id,
+                    'root_proc_id': root_proc_id,
+                    'graph_path': file_name,
+                    'date': pd.Timestamp.now().date()
+                }])
+                new_record.set_index(['doc_id', 'root_proc_id'], inplace=True)
+
+                # Оновлюємо існуючі записи
+                graph_reg.update(new_record)  # Оновлює існуючі записи
+
+                # Додаємо нові записи, яких ще немає у реєстрі graph_reg
+                missing_records = new_record[~new_record.index.isin(graph_reg.index)]
+                if not missing_records.empty:
+                    graph_reg = pd.concat([graph_reg, missing_records])
+
             except Exception as e:
                 logger.error(f"Не вдалося зберегти граф {file_name}: {e}")
                 logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
 
+    graph_reg.reset_index(inplace=True) # Скидаємо індекс перед збереженням
+    save_register(graph_reg, 'graph_register')
 
     if not grouped_instances:
         logger.warning("Аналіз перервано через відсутність груп екземплярів процесів.")

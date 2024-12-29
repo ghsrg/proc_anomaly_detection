@@ -25,15 +25,18 @@ ERROR_LOG_FILE = join_path([LOGS_PATH,f"error_{current_time}.log"])
 # Шляхи до даних
 BASE_DATA_PATH = join_path(['data'])
 RAW_DATA_PATH = join_path([BASE_DATA_PATH,'raw'])
-PROCESSED_DATA_PATH = join_path([BASE_DATA_PATH,'processed'])
-OUTPUTS_DATA_PATH = join_path([BASE_DATA_PATH,'outputs'])
+PROCESSED_DATA_PATH = join_path([BASE_DATA_PATH, 'processed'])
+OUTPUTS_DATA_PATH = join_path([BASE_DATA_PATH, 'outputs'])
+
+# Шлях до графів
+GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'graphs'])
+RAW_PATH = join_path(['data', 'raw'])
+
+REGISTER_PATH = join_path([BASE_DATA_PATH, 'registers'])
 
 # Створення необхідних папок
 make_dir(RAW_DATA_PATH)
 make_dir(PROCESSED_DATA_PATH)
 make_dir(OUTPUTS_DATA_PATH)
-
-# Шлях до графів
-GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'graphs'])
-
-RAW_PATH = join_path(['data', 'raw'])
+make_dir(GRAPH_PATH)
+make_dir(REGISTER_PATH)
