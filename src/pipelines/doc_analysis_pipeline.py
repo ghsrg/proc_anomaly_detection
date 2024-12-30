@@ -8,6 +8,7 @@ import traceback
 
 logger = get_logger(__name__)
 
+
 def select_document_definition(doc_definitions, caption_filter=None):
     """
     Вибір дефініції документа для аналізу на основі значення caption.
@@ -15,8 +16,6 @@ def select_document_definition(doc_definitions, caption_filter=None):
     :return: ID обраної дефініції документа (id).
     """
     try:
-
-
 
         if caption_filter:
             filtered_defs = doc_definitions[doc_definitions['caption'].str.contains(caption_filter, na=False)]
@@ -37,7 +36,8 @@ def select_document_definition(doc_definitions, caption_filter=None):
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
-def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
+
+def get_documents_for_definition(doc_def_id, documents, filter_ids=None, ):
     """
     Отримання списку документів на основі обраної дефініції.
     :param doc_def_id: ID дефініції документа.
@@ -48,9 +48,9 @@ def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
             logger.warning("ID дефініції документа не задано.")
             return None
 
-
-
-        selected_documents = documents[(documents['doctype_id'] == doc_def_id) & (documents['docstate_code'] != 'new') & (documents['docstate_code'] != 'project')]
+        selected_documents = documents[
+            (documents['doctype_id'] == doc_def_id) & (documents['docstate_code'] != 'new') & (
+                        documents['docstate_code'] != 'project') & (documents['docstate_code'] != 'Scheduled')]
 
         if filter_ids and isinstance(filter_ids, list):
             selected_documents = selected_documents[selected_documents['doc_id'].isin(filter_ids)]
@@ -66,6 +66,7 @@ def get_documents_for_definition(doc_def_id,  documents, filter_ids=None,):
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
+
 def get_process_instances(doc_id_list, processes):
     """
     Отримання екземплярів процесів для кожного документа.
@@ -76,7 +77,6 @@ def get_process_instances(doc_id_list, processes):
         if not doc_id_list:
             logger.warning("Список ID документів порожній.")
             return None
-
 
         result = {}
 
@@ -95,7 +95,8 @@ def get_process_instances(doc_id_list, processes):
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
 
-def group_process_instances_by_root(process_instances,camunda_instances ):
+
+def group_process_instances_by_root(process_instances, camunda_instances):
     """
     Групування екземплярів процесів за ROOT_PROC_INST_ID_ для кожного документа.
     :param process_instances: Словник процесів для документів.
@@ -115,18 +116,19 @@ def group_process_instances_by_root(process_instances,camunda_instances ):
             selected_instances = camunda_instances[camunda_instances['ID_'].isin(doc_proc_external_ids)]
 
             if selected_instances.empty:
-                logger.warning(f"Не знайдено екземплярів процесів у Camunda для документа ID: {doc_id}, process ext_id:{doc_proc_external_ids[0]}, id:{doc_proc_ids[0]}")
+                logger.warning(
+                    f"Не знайдено екземплярів процесів у Camunda для документа ID: {doc_id}, process ext_id:{doc_proc_external_ids[0]}, id:{doc_proc_ids[0]}")
             else:
                 grouped = selected_instances.groupby('ROOT_PROC_INST_ID_')
                 result[doc_id] = {root_id: group for root_id, group in grouped}
                 logger.info(f"Групування процесів завершено для {len(result)} документів.")
-
 
         return result
     except Exception as e:
         logger.error(f"Помилка під час групування екземплярів процесів: {e}")
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
+
 
 def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
     """
@@ -143,7 +145,7 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
 
                 # Використовуємо merge для додавання bpmn_model
                 group = group.merge(
-                    bpmn_df[['process_definition_id', 'bpmn_model','KEY_']],
+                    bpmn_df[['process_definition_id', 'bpmn_model', 'KEY_']],
                     left_on='PROC_DEF_ID_',
                     right_on='process_definition_id',
                     how='left'
@@ -163,10 +165,10 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
         return None
 
 
-
 def analyze_documents(caption_filter=None):
     """
-    Основна функція для аналізу документів.
+    Основна функція для аналізу документів бере дані з RAW файлів та вираховує графи.
+    Після відпрацювання створюється реєстр оброблених файлів і файли з графами процесів
     :param caption_filter: Фільтр для вибору дефініції документа.
     """
     logger.info("Запуск аналізу документів...")
@@ -183,7 +185,8 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
-    documents = get_documents_for_definition(doc_def['ID'], docs, [3003643877955]) #3003643877955 # для дебага можемо вказати, який документ обробляти
+    documents = get_documents_for_definition(doc_def['ID'], docs,
+                                             [])  #3003643877955 # для дебага можемо вказати, який документ обробляти
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -201,7 +204,8 @@ def analyze_documents(caption_filter=None):
     ###########################
     # Групування екземплярів процесів за ROOT_PROC_INST_ID_ для кожного документа
     grouped_instances = {}
-    camunda_instances = read_from_parquet("ACT_HI_PROCINST", columns=["ID_", "ROOT_PROC_INST_ID_", "PROC_DEF_ID_"]) #, columns=["ID_", "ROOT_PROC_INST_ID_"]
+    camunda_instances = read_from_parquet("ACT_HI_PROCINST", columns=["ID_", "ROOT_PROC_INST_ID_",
+                                                                      "PROC_DEF_ID_"])  #, columns=["ID_", "ROOT_PROC_INST_ID_"]
     # logger.debug(camunda_instances, variable_name="camunda_instances", max_lines=3)
     for doc_id, processes in process_instances.items():
         grouped = group_process_instances_by_root({doc_id: processes}, camunda_instances)
@@ -220,10 +224,12 @@ def analyze_documents(caption_filter=None):
 
     ###########################
     # будуємо граф для процесів, враховуючи деталі по задачах
-    bpm_tasks = read_from_parquet("bpm_tasks")
 
+    bpm_tasks = read_from_parquet("bpm_tasks")
     camunda_tasks = read_from_parquet("act_hi_taskinst", columns=["ID_", "TASK_DEF_KEY_"])
-    camunda_actions = read_from_parquet("act_inst", columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_", "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_"])
+    camunda_actions = read_from_parquet("act_inst",
+                                        columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_",
+                                                 "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_"])
     #logger.debug(camunda_actions, variable_name="camunda_actions", max_lines=3)
 
     enriched_tasks = bpm_tasks.merge(
@@ -232,7 +238,7 @@ def analyze_documents(caption_filter=None):
         left_on='externalid',
         right_on='ID_'
     )
-    bpm_doc_purch = read_from_parquet("bpm_doc_purch") #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
+    bpm_doc_purch = read_from_parquet("bpm_doc_purch")  #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
     grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions, bpm_doc_purch)
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
@@ -274,7 +280,7 @@ def analyze_documents(caption_filter=None):
                 logger.error(f"Не вдалося зберегти граф {file_name}: {e}")
                 logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
 
-    graph_reg.reset_index(inplace=True) # Скидаємо індекс перед збереженням
+    graph_reg.reset_index(inplace=True)  # Скидаємо індекс перед збереженням
     save_register(graph_reg, 'graph_register')
 
     if not grouped_instances:
@@ -282,6 +288,3 @@ def analyze_documents(caption_filter=None):
         return
 
     logger.info("Аналіз документів завершено.")
-
-
-

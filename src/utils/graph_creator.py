@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 import networkx as nx
 from src.utils.logger import get_logger
-from src.utils.visualizer import visualize_graph, visualize_graph_with_dot
+from src.utils.visualizer import visualize_graph_with_dot
 from src.utils.graph_utils import inspect_graph
 import pandas as pd
 import inspect
@@ -190,9 +190,12 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
     :return: Словник {doc_id: {root_proc_id: networkx.DiGraph}}.
     """
     result_graphs = {}
-
+    total_cycles = len(grouped_instances_with_bpmn)  # Загальна кількість циклів
     try:
-        for doc_id, root_groups in grouped_instances_with_bpmn.items():
+        for current_cycle, (doc_id, root_groups) in enumerate(grouped_instances_with_bpmn.items(), start=1):
+            progress = (current_cycle / total_cycles) * 100
+            print(f"Цикл {current_cycle}/{total_cycles} - Обробляється doc_id: {doc_id} : {progress:.2f}%")
+
             doc_graphs = {}
 
             for root_proc_id, root_group in root_groups.items():

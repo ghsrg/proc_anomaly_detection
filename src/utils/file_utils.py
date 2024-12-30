@@ -71,6 +71,7 @@ def save_graphs(process_graph, path):
             nx.write_graphml(subgraph, graph_file)
             logger.info(f"Граф процесу {node} збережено у {graph_file}.")
 
+
 def save_graph(graph: nx.DiGraph, file_name: str, path: str):
     """
     Зберігає граф у форматі GraphML.
@@ -83,6 +84,26 @@ def save_graph(graph: nx.DiGraph, file_name: str, path: str):
     nx.write_graphml(graph, file_path)
     logger.info(f"Граф збережено у {file_path}")
 
+
+def load_graph(file_name: str, path: str) -> nx.DiGraph:
+    """
+    Завантажує граф у форматі GraphML.
+
+    :param file_name: Назва файлу графа без розширення.
+    :param path: Шлях до папки, де зберігається файл.
+    :return: Граф NetworkX у вигляді nx.DiGraph.
+    """
+    try:
+        file_path = join_path([path, f"{file_name}.graphml"])
+        graph = nx.read_graphml(file_path)
+        logger.info(f"Граф завантажено з {file_path}")
+        return graph
+    except FileNotFoundError:
+        logger.error(f"Файл графа {file_name}.graphml не знайдено в {path}.")
+        raise
+    except Exception as e:
+        logger.error(f"Помилка під час завантаження графа {file_name}: {e}")
+        raise
 
 def save_graph_to_zip(graph: nx.DiGraph, file_name: str, path: str):
     """

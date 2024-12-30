@@ -1,5 +1,6 @@
 from src.utils.logger import get_logger
 import pandas as pd
+from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -41,3 +42,54 @@ def inspect_graph(graph):
             elif isinstance(value, (dict, set)):
                 logger.error(f"Ребро {u}->{v} має атрибут {key} з несумісним типом: {type(value)}")
 
+
+def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_numeric=0.0, default_date="1970-01-01T00:00:00", default_string=" "):
+    """
+    Форматує значення атрибутів графа, забезпечуючи правильний формат чисел, дат і рядків.
+
+    :param graph: Граф NetworkX.
+    :param numeric_attrs: Список атрибутів, які повинні бути числовими.
+    :param date_attrs: Список атрибутів, які повинні бути датами.
+    :param default_numeric: Значення за замовчуванням для некоректних числових атрибутів.
+    :param default_date: Значення за замовчуванням для некоректних датованих атрибутів.
+    :param default_string: Значення за замовчуванням для некоректних рядкових атрибутів.
+    :return: Відформатований граф.
+    """
+    formatted_graph = graph.copy()
+
+    numeric_attrs = numeric_attrs or []
+    date_attrs = date_attrs or []
+
+    for node, data in formatted_graph.nodes(data=True):
+        # Форматування числових значень
+        for attr in numeric_attrs:
+            if attr in data:
+                value = data[attr]
+                try:
+                    if isinstance(value, str):
+                        # Видаляємо пробіли, коми, валюти та перетворюємо в float
+                        value = value.replace(" ", "").replace(",", ".").split()[0]
+                    data[attr] = float(value)
+                except (ValueError, TypeError):
+                    logger.debug(f"Атрибут '{attr}' не вдалося обробити: {value}")
+                    data[attr] = default_numeric  # Замінюємо некоректні значення
+
+        # Форматування дат
+        for attr in date_attrs:
+            if attr in data:
+                value = data[attr]
+                try:
+                    if value:
+                        date_obj = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+                        data[attr] = date_obj.strftime("%Y-%m-%dT%H:%M:%S")  # Перетворюємо в рядковий формат
+                except (ValueError, TypeError):
+                    logger.debug(f"Атрибут дати '{attr}' не вдалося обробити: {value}")
+                    data[attr] = default_date  # Замінюємо некоректні значення
+
+        # Замінюємо None значення для всіх інших атрибутів
+        for attr, value in data.items():
+            if value is None:
+                logger.debug(f"Атрибут '{attr}' має значення None. Замінюємо на '{default_string}'.")
+                data[attr] = default_string
+
+    return formatted_graph

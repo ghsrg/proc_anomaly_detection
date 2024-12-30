@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 # Параметри логування
-LOG_LEVEL = "DEBUG"  # Загальний рівень логування
+LOG_LEVEL = "INFO"  # Загальний рівень логування
 LOG_TO_SCREEN = {     # Налаштування для виводу на екран
     "DEBUG": 1,
     "INFO": 1,
@@ -30,6 +30,9 @@ OUTPUTS_DATA_PATH = join_path([BASE_DATA_PATH, 'outputs'])
 
 # Шлях до графів
 GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'graphs'])
+NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normal_graphs'])
+ANOMALOUS_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'anomalous_graphs'])
+
 RAW_PATH = join_path(['data', 'raw'])
 
 REGISTER_PATH = join_path([BASE_DATA_PATH, 'registers'])
