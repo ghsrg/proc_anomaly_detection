@@ -6,6 +6,42 @@ import pandas as pd
 
 logger = get_logger(__name__)
 
+
+def save_training_diagram(stats, file_name=None):
+    """
+    Зберігає діаграму процесу навчання або відображає її на екрані.
+
+    :param stats: Дані статистики для побудови графіку.
+    :param file_name: Повний шлях до файлу для збереження (або None для відображення).
+    """
+    try:
+        plt.figure(figsize=(10, 6))
+
+        # Побудова графіків для всіх доступних метрик
+        for metric, values in stats.items():
+            if metric != 'epochs':  # epochs використовуються як x-axis
+                plt.plot(stats['epochs'], values, label=metric)
+
+        plt.xlabel('Epochs')
+        plt.ylabel('Metrics')
+        plt.title('Training Process')
+        plt.legend()
+        plt.grid(True)
+
+        if file_name:
+            # Збереження графіку
+            plt.savefig(file_name)
+            logger.info(f"Діаграму процесу навчання збережено у {file_name}")
+            plt.close()
+        else:
+            # Відображення графіку на екрані
+            plt.show()
+    except Exception as e:
+        logger.error(f"Помилка під час збереження або відображення діаграми: {e}")
+        raise
+
+
+
 def visualize_graph_with_dot(graph, file_path=None):
     """
     Візуалізація графа NetworkX у стилі BPMN із використанням Graphviz 'dot'.

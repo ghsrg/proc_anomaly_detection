@@ -15,7 +15,6 @@ LOG_TO_SCREEN = {     # Налаштування для виводу на екр
 
 # Шлях до логів
 LOGS_PATH = join_path(['logs'])
-make_dir(LOGS_PATH)
 
 # Генерація назв файлів логів з датою і часом
 current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -34,12 +33,27 @@ NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normal_graphs'])
 ANOMALOUS_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'anomalous_graphs'])
 
 RAW_PATH = join_path(['data', 'raw'])
-
 REGISTER_PATH = join_path([BASE_DATA_PATH, 'registers'])
 
-# Створення необхідних папок
+BASE_OUTPUTS_PATH = join_path([BASE_DATA_PATH, 'outputs'])
+LEARN_DIAGRAMS_PATH = join_path([BASE_OUTPUTS_PATH, 'learn_diagrams'])
+TEST_DIAGRAMS_PATH = join_path([BASE_OUTPUTS_PATH, 'test_diagrams'])
+
+BASE_NN_MODELS_PATH = join_path(['nn_models'])
+NN_MODELS_CHECKPOINTS_PATH = join_path([BASE_NN_MODELS_PATH, 'checkpoints'])
+NN_MODELS_TRAINED_PATH = join_path([BASE_NN_MODELS_PATH, 'trained'])
+
+# Створення необхідних тек, якщо їх немає
+make_dir(LOGS_PATH)
+make_dir(RAW_PATH)
 make_dir(RAW_DATA_PATH)
 make_dir(PROCESSED_DATA_PATH)
 make_dir(OUTPUTS_DATA_PATH)
 make_dir(GRAPH_PATH)
+make_dir(NORMAL_GRAPH_PATH)
+make_dir(ANOMALOUS_GRAPH_PATH)
 make_dir(REGISTER_PATH)
+make_dir(LEARN_DIAGRAMS_PATH)
+make_dir(TEST_DIAGRAMS_PATH)
+make_dir(NN_MODELS_CHECKPOINTS_PATH)
+make_dir(NN_MODELS_TRAINED_PATH)

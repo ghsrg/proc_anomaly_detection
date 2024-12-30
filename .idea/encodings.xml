@@ -10,12 +10,15 @@
     <file url="file://$PROJECT_DIR$/src/core/autoencoder.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/clustering.py" charset="windows-1251" />
     <file url="file://$PROJECT_DIR$/src/core/data_processing.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/core/gnn.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/graph_processing.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/retraining.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/data_sources/mssql_connector.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/pipelines/clustering_pipeline.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/pipelines/evaluate_pipeline.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/pipelines/preprocess_pipeline.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/pipelines/retrain_pipeline.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/pipelines/train_pipeline.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/utils/metrics.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/utils/visualizer.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/tests/test_data_processing.py" charset="UTF-8" />

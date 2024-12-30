@@ -5,6 +5,7 @@ from src.utils.file_utils_l import make_dir, join_path, is_file_exist
 from src.utils.logger import get_logger
 from src.config.config import RAW_PATH, REGISTER_PATH
 import gzip
+import torch
 from pathlib import Path
 logger = get_logger(__name__)
 
@@ -179,3 +180,47 @@ def load_register(file_name: str, columns=None) -> pd.DataFrame:
     logger.info(f"Дані завантажено з {reg_data_path}")
     return df
 
+def save_checkpoint(model, optimizer, epoch, loss, file_path):
+    """
+    Зберігає стан моделі, оптимізатора та параметри навчання.
+
+    :param model: PyTorch модель.
+    :param optimizer: Оптимізатор моделі.
+    :param epoch: Поточна епоха навчання.
+    :param loss: Значення поточного loss.
+    :param file_path: Шлях для збереження файлу.
+    """
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'epoch': epoch,
+        'loss': loss,
+    }
+    torch.save(checkpoint, file_path)
+    print(f"Чекпоінт збережено у {file_path}")
+
+
+def load_checkpoint(file_path, model, optimizer=None):
+    """
+    Завантажує стан моделі та (опціонально) оптимізатора.
+
+    :param file_path: Шлях до файлу збереження.
+    :param model: PyTorch модель для завантаження стану.
+    :param optimizer: (Необов'язково) Оптимізатор для завантаження стану.
+    :return: epoch, loss (якщо вони збережені).
+    """
+    if not is_file_exist(file_path):
+        raise FileNotFoundError(f"Файл чекпоінта не існує за шляхом: {file_path}")
+
+    try:
+        checkpoint = torch.load(file_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        if optimizer:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint.get('epoch', 0)
+        loss = checkpoint.get('loss', None)
+
+        print(f"Чекпоінт завантажено з {file_path}")
+        return epoch, loss
+    except Exception as e:
+        raise RuntimeError(f"Помилка під час завантаження чекпоінта: {file_path}. Деталі: {str(e)}")

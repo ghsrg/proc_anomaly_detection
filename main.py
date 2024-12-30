@@ -1,8 +1,8 @@
 import argparse
 from src.utils.logger import get_logger
-from src.modes.experimental_mode import run_experimental_mode
-from src.modes.analytical_mode import run_analytical_mode
-from src.modes.production_mode import run_production_mode
+from src.modes.preparation_mode import run_experimental_mode
+from src.modes.learning_mode import run_learning_mode
+from src.modes.analityc_mode import run_production_mode
 
 logger = get_logger(__name__)
 
@@ -22,13 +22,13 @@ def main():
 
         # Вибір режиму роботи
         if args.mode == "preparation":
-            logger.info("Запущено експериментальний режим.")
+            logger.info("Запущено режим підготовки даних")
             run_experimental_mode(args)
-        elif args.mode == "analytical":
-            logger.info("Запущено аналітичний режим.")
-            run_analytical_mode(args)
-        elif args.mode == "production":
-            logger.info("Запущено режим виконання.")
+        elif args.mode == "learning":
+            logger.info("Запущено режим навчання")
+            run_learning_mode(args)
+        elif args.mode == "analityc":
+            logger.info("Запущено режим аналітики.")
             run_production_mode(args)
         else:
             logger.error(f"Невідомий режим: {args.mode} Допустимі значення: experimental, analytical, production.")
