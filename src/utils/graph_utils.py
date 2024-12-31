@@ -59,6 +59,7 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
 
     numeric_attrs = numeric_attrs or []
     date_attrs = date_attrs or []
+    default_date_obj = datetime.strptime(default_date, "%Y-%m-%dT%H:%M:%S")
 
     for node, data in formatted_graph.nodes(data=True):
         # Форматування числових значень
@@ -72,19 +73,25 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
                     data[attr] = float(value)
                 except (ValueError, TypeError):
                     logger.debug(f"Атрибут '{attr}' не вдалося обробити: {value}")
-                    data[attr] = default_numeric  # Замінюємо некоректні значення
+                    data[attr] = default_numeric
 
         # Форматування дат
         for attr in date_attrs:
             if attr in data:
                 value = data[attr]
                 try:
-                    if value:
+                    if value and isinstance(value, str):
                         date_obj = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
-                        data[attr] = date_obj.strftime("%Y-%m-%dT%H:%M:%S")  # Перетворюємо в рядковий формат
+                        data[attr] = int(date_obj.timestamp())
+                    else:
+                        raise ValueError
                 except (ValueError, TypeError):
-                    logger.debug(f"Атрибут дати '{attr}' не вдалося обробити: {value}")
-                    data[attr] = default_date  # Замінюємо некоректні значення
+                    logger.debug(f"Атрибут дати '{attr}' не вдалося обробити: {value}. Використовуємо дефолт.")
+                    try:
+                        data[attr] = int(default_date_obj.timestamp())
+                    except (OSError, OverflowError):
+                        logger.debug(f"Дефолтну дату '{default_date}' неможливо конвертувати в Unix time. Використовуємо 0.")
+                        data[attr] = 0
 
         # Замінюємо None значення для всіх інших атрибутів
         for attr, value in data.items():

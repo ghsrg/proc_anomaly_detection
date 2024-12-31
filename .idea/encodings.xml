@@ -7,10 +7,10 @@
     <file url="file://$PROJECT_DIR$/logs/app_2024-12-18_11-37-24.log" charset="windows-1251" />
     <file url="file://$PROJECT_DIR$/main.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/config/config.py" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/src/core/autoencoder.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/clustering.py" charset="windows-1251" />
+    <file url="file://$PROJECT_DIR$/src/core/core_autoencoder.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/core/core_gnn.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/data_processing.py" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/src/core/gnn.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/graph_processing.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/core/retraining.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/data_sources/mssql_connector.py" charset="UTF-8" />

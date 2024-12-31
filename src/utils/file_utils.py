@@ -73,34 +73,48 @@ def save_graphs(process_graph, path):
             logger.info(f"Граф процесу {node} збережено у {graph_file}.")
 
 
-def save_graph(graph: nx.DiGraph, file_name: str, path: str):
+def save_graph(graph: nx.DiGraph, file_name: str, path: str = None):
     """
     Зберігає граф у форматі GraphML.
     :param graph: Граф NetworkX.
     :param file_name: Назва файлу для збереження.
     :param path: Шлях до папки для збереження.
     """
-    make_dir(path)  # Створює папку, якщо її не існує
-    file_path = join_path([path, f"{file_name}.graphml"])
-    nx.write_graphml(graph, file_path)
-    logger.info(f"Граф збережено у {file_path}")
+    try:
+        if path:
+            make_dir(path)  # Створює папку, якщо її не існує
+            file_path = join_path([path, f"{file_name}.graphml"])
+        else:
+            file_path = f"{file_name}.graphml"  # Вважаємо, що file_name містить повний шлях
+
+        #file_path = join_path([path, f"{file_name}.graphml"])
+        nx.write_graphml(graph, file_path)
+        logger.info(f"Граф збережено у {file_path}")
+
+    except Exception as e:
+        logger.error(f"Помилка під час зберігання графа {file_name}: {e}")
+        raise
 
 
-def load_graph(file_name: str, path: str) -> nx.DiGraph:
+def load_graph(file_name: str, path: str = None) -> nx.DiGraph:
     """
     Завантажує граф у форматі GraphML.
 
-    :param file_name: Назва файлу графа без розширення.
-    :param path: Шлях до папки, де зберігається файл.
+    :param file_name: Назва файлу графа без розширення або повний шлях до файлу.
+    :param path: (Необов'язково) Шлях до папки, де зберігається файл.
     :return: Граф NetworkX у вигляді nx.DiGraph.
     """
     try:
-        file_path = join_path([path, f"{file_name}.graphml"])
+        if path:
+            file_path = join_path([path, f"{file_name}.graphml"])
+        else:
+            file_path = f"{file_name}.graphml"  # Вважаємо, що file_name містить повний шлях
+
         graph = nx.read_graphml(file_path)
         logger.info(f"Граф завантажено з {file_path}")
         return graph
     except FileNotFoundError:
-        logger.error(f"Файл графа {file_name}.graphml не знайдено в {path}.")
+        logger.error(f"Файл графа {file_name}.graphml не знайдено в {path or 'вказаному шляху'}.")
         raise
     except Exception as e:
         logger.error(f"Помилка під час завантаження графа {file_name}: {e}")
@@ -191,13 +205,13 @@ def save_checkpoint(model, optimizer, epoch, loss, file_path):
     :param file_path: Шлях для збереження файлу.
     """
     checkpoint = {
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'epoch': epoch,
-        'loss': loss,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
+        "epoch": epoch,
+        "loss": loss,
     }
     torch.save(checkpoint, file_path)
-    print(f"Чекпоінт збережено у {file_path}")
+    logger.info(f"Чекпоінт збережено у {file_path}.")
 
 
 def load_checkpoint(file_path, model, optimizer=None):
@@ -224,3 +238,14 @@ def load_checkpoint(file_path, model, optimizer=None):
         return epoch, loss
     except Exception as e:
         raise RuntimeError(f"Помилка під час завантаження чекпоінта: {file_path}. Деталі: {str(e)}")
+
+def save_training_progress(register_name, progress_data):
+    """
+    Зберігає прогрес навчання у реєстр.
+    :param register_name: Назва реєстру.
+    :param progress_data: Дані прогресу.
+    """
+    register = load_register(register_name)
+    register = register.append(progress_data, ignore_index=True)
+    save_register(register, register_name)
+    logger.info(f"Прогрес навчання збережено у реєстр {register_name}.")

@@ -18,6 +18,16 @@ def main():
                             help="Проаналізувати документи й згенерувати первинні графи (опціонально)")
         parser.add_argument("--graph_synthesis", action="store_true", default=False,
                             help="Генерація додаткових графів для навчання (опціонально)")
+        parser.add_argument("--normalize", action="store_true", default=False,
+                            help="Запуск нормальізації графів перед режимом навчання (опціонально)")
+        parser.add_argument("--model_type", type=str,
+                            help="Модель навчання: model_type: GNN, CNN, RNN....")
+        parser.add_argument("--anomaly_type", type=str,
+                            help="Тип аномалії: missing_steps, duplicate_steps, wrong_route, abnormal_duration....")
+        parser.add_argument("--action", type=str,
+                            help="Тип запуску: start / resume / retrain")
+        parser.add_argument("--checkpoint", type=str,
+                            help="Назва checkpoint для віднрвлення навчання")
         args = parser.parse_args()
 
         # Вибір режиму роботи

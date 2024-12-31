@@ -142,20 +142,38 @@ tuple[nx.DiGraph, dict]:
         raise e
 
 
-def adjust_date(date_str, shift):
-    """Зміщення дати на заданий відсоток (shift)."""
+def adjust_date(date_input, shift):
+    """
+    Зміщення дати на заданий відсоток (shift), зберігаючи формат вхідних даних.
+
+    :param date_input: Дата у форматі ISO 8601 (рядок) або UNIX time (int).
+    :param shift: Відсоток зміщення (позитивний або негативний).
+    :return: Змінена дата у вихідному форматі (str або int).
+    """
     from datetime import datetime, timedelta
-    if not date_str:
+
+    if date_input is None:
         return None
 
     try:
-        date_obj = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
-        delta = timedelta(days=date_obj.day * shift)
-        new_date = date_obj + delta
-        return new_date.strftime("%Y-%m-%dT%H:%M:%S")
-    except ValueError:
-        logger.warning(f"Неможливо змінити дату: {date_str}")
-        return date_str
+        if isinstance(date_input, int):
+            # Вхідне значення як UNIX time
+            date_obj = datetime.fromtimestamp(date_input)
+            delta = timedelta(days=date_obj.day * shift)
+            new_date = date_obj + delta
+            return int(new_date.timestamp())  # Повертаємо у форматі UNIX time
+        elif isinstance(date_input, str):
+            # Вхідне значення як ISO 8601 рядок
+            date_obj = datetime.strptime(date_input, "%Y-%m-%dT%H:%M:%S")
+            delta = timedelta(days=date_obj.day * shift)
+            new_date = date_obj + delta
+            return new_date.strftime("%Y-%m-%dT%H:%M:%S")  # Повертаємо у форматі рядка
+        else:
+            logger.warning(f"Непідтримуваний формат дати: {date_input}. Залишаємо без змін.")
+            return date_input  # Повертаємо як є, якщо формат не підтримується
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Неможливо змінити дату: {date_input}. Помилка: {e}")
+        return date_input
 
 
 def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", **params) -> tuple[nx.DiGraph, dict]:

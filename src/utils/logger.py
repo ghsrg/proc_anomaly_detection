@@ -47,7 +47,7 @@ class CustomLogger(logging.Logger):
             ]
 
             # Рекурсивна функція для перевірки типів елементів в структурі
-            def analyze_structure(data, level=3, max_depth=10):
+            def analyze_structure(data, level=5, max_depth=10):
                 """
                 Рекурсивно аналізує структуру даних (словники, списки, тощо).
                 :param data: Дані для аналізу.
