@@ -186,7 +186,7 @@ def analyze_documents(caption_filter=None):
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
     documents = get_documents_for_definition(doc_def['ID'], docs,
-                                             [])  #3003643877955 # для дебага можемо вказати, який документ обробляти
+                                             [])  #3001624275244 3003643877955 # для дебага можемо вказати, який документ обробляти
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")
@@ -229,7 +229,7 @@ def analyze_documents(caption_filter=None):
     camunda_tasks = read_from_parquet("act_hi_taskinst", columns=["ID_", "TASK_DEF_KEY_"])
     camunda_actions = read_from_parquet("act_inst",
                                         columns=["ACT_ID_", "ACT_NAME_", "ACT_TYPE_", "SEQUENCE_COUNTER_", "DURATION_",
-                                                 "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_"])
+                                                 "ROOT_PROC_INST_ID_", "PROC_INST_ID_", "TASK_ID_", "START_TIME_", "END_TIME_"])
     #logger.debug(camunda_actions, variable_name="camunda_actions", max_lines=3)
 
     enriched_tasks = bpm_tasks.merge(

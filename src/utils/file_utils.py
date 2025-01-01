@@ -89,7 +89,7 @@ def save_graph(graph: nx.DiGraph, file_name: str, path: str = None):
 
         #file_path = join_path([path, f"{file_name}.graphml"])
         nx.write_graphml(graph, file_path)
-        logger.info(f"Граф збережено у {file_path}")
+        logger.debug(f"Граф збережено у {file_path}")
 
     except Exception as e:
         logger.error(f"Помилка під час зберігання графа {file_name}: {e}")
@@ -111,43 +111,13 @@ def load_graph(file_name: str, path: str = None) -> nx.DiGraph:
             file_path = f"{file_name}.graphml"  # Вважаємо, що file_name містить повний шлях
 
         graph = nx.read_graphml(file_path)
-        logger.info(f"Граф завантажено з {file_path}")
+        logger.debug(f"Граф завантажено з {file_path}")
         return graph
     except FileNotFoundError:
         logger.error(f"Файл графа {file_name}.graphml не знайдено в {path or 'вказаному шляху'}.")
         raise
     except Exception as e:
         logger.error(f"Помилка під час завантаження графа {file_name}: {e}")
-        raise
-
-def save_graph_to_zip(graph: nx.DiGraph, file_name: str, path: str):
-    """
-    Зберігає граф у форматі GraphML в zip-архів.
-
-    :param graph: Граф NetworkX.
-    :param file_name: Назва файлу для ідентифікації графа.
-    :param zip_file_path: Шлях до zip-архіву для збереження.
-    """
-    try:
-        # Переконайтесь, що директорія існує
-        make_dir(path)
-
-        # Шлях до zip-архіву
-        zip_file_path = join_path([path, f"{file_name}.graphml.gz"])
-
-        # Запис графа у стиснутий формат
-        with gzip.open(zip_file_path, 'wt', encoding='utf-8') as zip_file:
-            # Генерація GraphML як рядка
-            graphml_data = nx.generate_graphml(graph)
-            for line in graphml_data:
-                zip_file.write(line)
-
-        logger.info(f"Граф збережено у {zip_file_path}")
-    except PermissionError as e:
-        logger.error(f"Помилка доступу до {path}: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Невідома помилка при збереженні графа {file_name}: {e}")
         raise
 
 

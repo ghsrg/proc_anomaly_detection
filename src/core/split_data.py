@@ -1,25 +1,31 @@
 from sklearn.model_selection import KFold
 import pandas as pd
+import random
 import numpy as np
 
-def split_data(data, split_ratio=(0.7, 0.2, 0.1)):
+
+def split_data(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True):
     """
     Розділяє дані на навчальну, валідаційну та тестову вибірки.
 
-    :param data: Повний набір даних (наприклад, DataFrame).
+    :param data: Список, де кожен елемент — кортеж (graph, label).
     :param split_ratio: Кортеж із частками для train, val, test (сума повинна дорівнювати 1).
+    :param shuffle: Чи перемішувати дані перед розділенням.
     :return: train_data, val_data, test_data
     """
     if not np.isclose(sum(split_ratio), 1.0):
         raise ValueError("Сума split_ratio повинна дорівнювати 1.")
 
+    if shuffle:
+        random.shuffle(data)  # Перемішуємо дані, якщо зазначено
+
     total_count = len(data)
     train_end = int(total_count * split_ratio[0])
     val_end = train_end + int(total_count * split_ratio[1])
 
-    train_data = data.iloc[:train_end]
-    val_data = data.iloc[train_end:val_end]
-    test_data = data.iloc[val_end:]
+    train_data = data[:train_end]
+    val_data = data[train_end:val_end]
+    test_data = data[val_end:]
 
     return train_data, val_data, test_data
 

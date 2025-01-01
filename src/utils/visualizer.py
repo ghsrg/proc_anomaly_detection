@@ -7,38 +7,37 @@ import pandas as pd
 logger = get_logger(__name__)
 
 
-def save_training_diagram(stats, file_name=None):
+def save_training_diagram(stats, file_path, test_stats=None):
     """
-    Зберігає діаграму процесу навчання або відображає її на екрані.
+    Зберігає графік навчання та валідації, додаючи, за потреби, тестові метрики.
 
-    :param stats: Дані статистики для побудови графіку.
-    :param file_name: Повний шлях до файлу для збереження (або None для відображення).
+    :param stats: Статистика навчання (словник зі списками по епохах).
+    :param file_path: Шлях для збереження графіка.
+    :param test_stats: Метрики тестових даних (словник).
     """
-    try:
-        plt.figure(figsize=(10, 6))
+    plt.figure()
 
-        # Побудова графіків для всіх доступних метрик
-        for metric, values in stats.items():
-            if metric != 'epochs':  # epochs використовуються як x-axis
-                plt.plot(stats['epochs'], values, label=metric)
+    # Графіки навчання та валідації
+    plt.plot(stats['epochs'], stats['train_loss'], label='Train Loss')
+    plt.plot(stats['epochs'], stats['val_precision'], label='Validation Precision')
+    plt.plot(stats['epochs'], stats['val_recall'], label='Validation Recall')
+    plt.plot(stats['epochs'], stats['val_roc_auc'], label='Validation ROC AUC')
 
-        plt.xlabel('Epochs')
-        plt.ylabel('Metrics')
-        plt.title('Training Process')
-        plt.legend()
-        plt.grid(True)
+    # Тестові метрики (додаються, якщо значення не None)
+    if test_stats:
+        if test_stats.get('precision') is not None:
+            plt.axhline(y=test_stats['precision'], color='blue', linestyle='--', label='Test Precision')
+        if test_stats.get('recall') is not None:
+            plt.axhline(y=test_stats['recall'], color='green', linestyle='--', label='Test Recall')
+        if test_stats.get('roc_auc') is not None:
+            plt.axhline(y=test_stats['roc_auc'], color='red', linestyle='--', label='Test ROC AUC')
 
-        if file_name:
-            # Збереження графіку
-            plt.savefig(file_name)
-            logger.info(f"Діаграму процесу навчання збережено у {file_name}")
-            plt.close()
-        else:
-            # Відображення графіку на екрані
-            plt.show()
-    except Exception as e:
-        logger.error(f"Помилка під час збереження або відображення діаграми: {e}")
-        raise
+    # Оформлення графіка
+    plt.xlabel('Epochs')
+    plt.ylabel('Metrics')
+    plt.legend()
+    plt.savefig(file_path)
+    plt.close()
 
 
 

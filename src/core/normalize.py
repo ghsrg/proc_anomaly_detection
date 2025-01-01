@@ -95,7 +95,7 @@ def calculate_global_statistics(graph_paths):
         for node, data in graph.nodes(data=True):
             for attr, value in data.items():
                 if isinstance(value, (int, float)):
-                    stats["numeric"][attr].append(value)
+                    stats["numeric"][attr].append(float(value))
                 elif isinstance(value, str):
                     stats["text"][attr].add(value)
                 elif isinstance(value, (np.datetime64, str)):
@@ -104,10 +104,10 @@ def calculate_global_statistics(graph_paths):
                     except ValueError:
                         continue
 
-        for u, v, data in graph.edges(data=True):  # Замість `edge, data`
+        for _, _, data in graph.edges(data=True):
             for attr, value in data.items():
                 if isinstance(value, (int, float)):
-                    stats["numeric"][attr].append(value)
+                    stats["numeric"][attr].append(float(value))
                 elif isinstance(value, str):
                     stats["text"][attr].add(value)
                 elif isinstance(value, (np.datetime64, str)):
@@ -116,7 +116,7 @@ def calculate_global_statistics(graph_paths):
                     except ValueError:
                         continue
 
-    # Обчислення статистик
+    # Перетворення в єдиний тип
     numeric_stats = {
         attr: {
             "min": np.min(values),
@@ -129,8 +129,7 @@ def calculate_global_statistics(graph_paths):
 
     text_stats = {
         attr: {
-            "unique_count": len(values),
-            "most_common": Counter(values).most_common(1)[0][0] if values else None
+            "unique_values": sorted(values)
         }
         for attr, values in stats["text"].items()
     }
@@ -149,9 +148,10 @@ def calculate_global_statistics(graph_paths):
         "date": date_stats
     }
 
+
 def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
     """
-    Нормалізує дані графа на основі глобальної статистики.
+    Нормалізує дані графа на основі глобальної статистики та додає всі можливі атрибути.
 
     :param graph: Граф NetworkX, який потрібно нормалізувати.
     :param global_stats: Словник зі статистикою для нормалізації.
@@ -159,37 +159,46 @@ def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
     """
     normalized_graph = graph.copy()
 
+    # Додати всі можливі атрибути до вузлів
+    for node, data in normalized_graph.nodes(data=True):
+        for attr in global_stats["numeric"]:
+            if attr not in data:
+                data[attr] = 0.0  # За замовчуванням 0 для числових атрибутів
+        for attr in global_stats["text"]:
+            if attr not in data:
+                data[attr] = -1  # За замовчуванням -1 для текстових атрибутів
+
+    # Додати всі можливі атрибути до ребер
+    for u, v, data in normalized_graph.edges(data=True):
+        for attr in global_stats["numeric"]:
+            if attr not in data:
+                data[attr] = 0.0  # За замовчуванням 0 для числових атрибутів
+        for attr in global_stats["text"]:
+            if attr not in data:
+                data[attr] = -1  # За замовчуванням -1 для текстових атрибутів
+
     # Нормалізація вузлів
-    if "nodes" in global_stats:
-        for node, data in normalized_graph.nodes(data=True):
-            for attr, value in data.items():
-                if attr in global_stats["nodes"].get("numeric", {}):
-                    stats = global_stats["nodes"]["numeric"][attr]
-                    if stats["max"] > stats["min"]:
-                        data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
-                elif attr in global_stats["nodes"].get("text", {}):
-                    mapping = {v: i for i, v in enumerate(global_stats["nodes"]["text"][attr]["unique_values"])}
-                    data[attr] = mapping.get(value, -1)
-                elif attr in global_stats["nodes"].get("date", {}):
-                    min_date, max_date = global_stats["nodes"]["date"][attr]["min"], global_stats["nodes"]["date"][attr]["max"]
-                    if max_date > min_date:
-                        data[attr] = (np.datetime64(value) - min_date).astype(float) / (max_date - min_date).astype(float)
+    for node, data in normalized_graph.nodes(data=True):
+        for attr, value in data.items():
+            if attr in global_stats["numeric"]:
+                stats = global_stats["numeric"][attr]
+                if stats["max"] > stats["min"]:
+                    data[attr] = (float(value) - stats["min"]) / (stats["max"] - stats["min"])
+            elif attr in global_stats["text"]:
+                mapping = {v: i for i, v in enumerate(global_stats["text"][attr]["unique_values"])}
+                data[attr] = mapping.get(value, -1)
 
     # Нормалізація ребер
-    if "edges" in global_stats:
-        for u, v, data in normalized_graph.edges(data=True):
-            for attr, value in data.items():
-                if attr in global_stats["edges"].get("numeric", {}):
-                    stats = global_stats["edges"]["numeric"][attr]
-                    if stats["max"] > stats["min"]:
-                        data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
-                elif attr in global_stats["edges"].get("text", {}):
-                    mapping = {v: i for i, v in enumerate(global_stats["edges"]["text"][attr]["unique_values"])}
-                    data[attr] = mapping.get(value, -1)
-                elif attr in global_stats["edges"].get("date", {}):
-                    min_date, max_date = global_stats["edges"]["date"][attr]["min"], global_stats["edges"]["date"][attr]["max"]
-                    if max_date > min_date:
-                        data[attr] = (np.datetime64(value) - min_date).astype(float) / (max_date - min_date).astype(float)
+    for u, v, data in normalized_graph.edges(data=True):
+        for attr, value in data.items():
+            if attr in global_stats["numeric"]:
+                stats = global_stats["numeric"][attr]
+                if stats["max"] > stats["min"]:
+                    data[attr] = (float(value) - stats["min"]) / (stats["max"] - stats["min"])
+            elif attr in global_stats["text"]:
+                mapping = {v: i for i, v in enumerate(global_stats["text"][attr]["unique_values"])}
+                data[attr] = mapping.get(value, -1)
 
     return normalized_graph
+
 

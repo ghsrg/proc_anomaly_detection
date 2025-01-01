@@ -43,7 +43,7 @@ def inspect_graph(graph):
                 logger.error(f"Ребро {u}->{v} має атрибут {key} з несумісним типом: {type(value)}")
 
 
-def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_numeric=0.0, default_date="1970-01-01T00:00:00", default_string=" "):
+def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_numeric=0.0, default_date="1970-01-01T00:00:00.0", default_string=" "):
     """
     Форматує значення атрибутів графа, забезпечуючи правильний формат чисел, дат і рядків.
 
@@ -59,7 +59,7 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
 
     numeric_attrs = numeric_attrs or []
     date_attrs = date_attrs or []
-    default_date_obj = datetime.strptime(default_date, "%Y-%m-%dT%H:%M:%S")
+    default_date_obj = datetime.strptime(default_date, "%Y-%m-%dT%H:%M:%S.%f")
 
     for node, data in formatted_graph.nodes(data=True):
         # Форматування числових значень
@@ -72,7 +72,7 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
                         value = value.replace(" ", "").replace(",", ".").split()[0]
                     data[attr] = float(value)
                 except (ValueError, TypeError):
-                    logger.debug(f"Атрибут '{attr}' не вдалося обробити: {value}")
+                    logger.debug(f"Атрибут numeric '{attr}' не вдалося обробити: {value}")
                     data[attr] = default_numeric
 
         # Форматування дат
@@ -80,8 +80,11 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
             if attr in data:
                 value = data[attr]
                 try:
+                    logger.debug(f"Атрибут value {value}, має тип '{type(value)}'.")
                     if value and isinstance(value, str):
-                        date_obj = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+                        logger.debug(f"Атрибут value '{value}'.")
+                        date_obj = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f")
+                        logger.debug(f"Атрибут дати '{attr}' date_obj =  {date_obj}.")
                         data[attr] = int(date_obj.timestamp())
                     else:
                         raise ValueError
@@ -92,6 +95,7 @@ def format_graph_values(graph, numeric_attrs=None, date_attrs=None, default_nume
                     except (OSError, OverflowError):
                         logger.debug(f"Дефолтну дату '{default_date}' неможливо конвертувати в Unix time. Використовуємо 0.")
                         data[attr] = 0
+                logger.debug(f"Атрибут '{value}' -> : {data[attr]}")
 
         # Замінюємо None значення для всіх інших атрибутів
         for attr, value in data.items():

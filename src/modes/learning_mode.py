@@ -25,6 +25,7 @@ def run_learning_mode(args):
 
         # Виконати навчання
     try:
+
         # Завантаження конфігурації
         model_type = args.model_type
         anomaly_type = args.anomaly_type
