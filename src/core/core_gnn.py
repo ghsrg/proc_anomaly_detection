@@ -12,43 +12,34 @@ from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS
 logger = get_logger(__name__)
 
 class GNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, edge_dim=None):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        """
+        Ініціалізація графової нейронної мережі (GNN).
+
+        :param input_dim: Кількість вхідних ознак для вузлів.
+        :param hidden_dim: Розмір прихованого шару.
+        :param output_dim: Кількість вихідних ознак для вузлів.
+        """
         super(GNN, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.global_pool = global_mean_pool
-        self.fc = nn.Linear(hidden_dim, output_dim)
-        self.activation = nn.Sigmoid()
-        self.edge_processor = nn.Linear(edge_dim, hidden_dim) if edge_dim is not None else None
+        self.conv1 = GCNConv(input_dim, hidden_dim)  # Перший графовий шар
+        self.conv2 = GCNConv(hidden_dim, output_dim)  # Другий графовий шар
+        self.activation = nn.ReLU()  # Функція активації для внутрішніх шарів
+        self.global_pool = global_mean_pool  # Глобальне пулінгування
+        self.final_activation = nn.Sigmoid()  # Активація для класифікації
 
-    def forward(self, x, edge_index, batch, edge_attr=None):
-        # Перевірка вхідних даних
-        #print( f"x min: {x.min()}, max: {x.max()}, contains nan: {torch.isnan(x).any()}, contains inf: {torch.isinf(x).any()}")
+    def forward(self, x, edge_index, batch=None):
+        """
+        Прямий прохід через графову нейронну мережу.
 
-        if edge_attr is not None and self.edge_processor is not None:
-            edge_features = self.edge_processor(edge_attr)
-            print(
-                f"Processed edge_attr: min {edge_features.min()}, max {edge_features.max()}, nan {torch.isnan(edge_features).any()}")
-
-        # Перший графовий шар
-        x = torch.relu(self.conv1(x, edge_index))
-        #print(f"After conv1: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
-
-        # Другий графовий шар
-        x = torch.relu(self.conv2(x, edge_index))
-       # print(f"After conv2: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
-
-        if edge_attr is not None:
-            x = x + edge_features  # Додавання впливу атрибутів ребер
-
-        # Глобальний пулінг
-        x = self.global_pool(x, batch)
-        #print(f"After pooling: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
-
-        # Вихідний шар
-        x = self.activation(self.fc(x))
-       # print(f"After activation: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
-
+        :param x: Тензор вузлів (node features).
+        :param edge_index: Тензор зв’язків (edges).
+        :param batch: Інформація про пакети (необов’язково).
+        :return: Вихідний тензор після проходження через GNN.
+        """
+        x = self.activation(self.conv1(x, edge_index))  # Перший графовий шар з активацією
+        x = self.conv2(x, edge_index)  # Другий графовий шар
+        x = self.global_pool(x, batch)  # Глобальне пулінгування для отримання графових ознак
+        x = self.final_activation(x)  # Фінальна активація (Sigmoid)
         return x
 
 
@@ -62,6 +53,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     :return: List of Data objects for GNN.
     """
     data_list = []
+    max_features = 0
 
     def infer_graph_attributes(graph):
         """
@@ -97,7 +89,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         :return: PyTorch Geometric Data object.
         """
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
-
+        nonlocal max_features
         # Node attributes
         numeric_attrs = graph.graph.get("numeric_attrs", [])
         node_features = []
@@ -109,6 +101,12 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
             node_features.append(features)
 
         x = torch.tensor(node_features, dtype=torch.float)
+        if torch.isnan(x).any():
+            logger.warning(f"Node features contain nan: {x}")
+        if x.shape[1] > 0:
+            max_features = max(max_features, x.shape[1])
+        else:
+            logger.warning(f"Graph without numeric node attributes detected.")
 
         # Edge attributes
         edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
@@ -124,11 +122,32 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
                 ],
                 dtype=torch.float
             )
+            if torch.isnan(edge_attr).any():
+                logger.warning(f"Edge attributes contain nan: {edge_attr}")
 
-        # Global attributes (if needed)
-        y = torch.tensor([label], dtype=torch.float)
+        # Global attributes
+        global_features = []
+        for node, node_data in graph.nodes(data=True):
+            if node_data.get("type") == "startEvent":
+                global_features = [
+                    float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
+                    for attr in graph.graph.get("global_attrs", [])
+                ]
+                break
 
-        return Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
+        global_features = torch.tensor(global_features, dtype=torch.float)
+        if torch.isnan(global_features).any():
+            logger.warning(f"Global features contain nan: {global_features}")
+
+        data = Data(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            y=torch.tensor([label], dtype=torch.float),
+            global_features=global_features
+        )
+
+        return data
 
     for graph_file in normal_graphs["graph_path"]:
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
@@ -162,7 +181,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         data_list.append(data)
 
-    return data_list
+    return data_list, max_features
 
 
 
@@ -185,6 +204,14 @@ def train_epoch(model, data, optimizer, batch_size=32, loss_fn=None):
     num_batches = (len(data) + batch_size - 1) // batch_size  # Обчислення кількості пакетів
 
     for batch_idx in range(num_batches):
+        # Обчислення поточного прогресу
+        current_iteration = batch_idx + 1
+        total_iterations = num_batches
+        progress_percent = (current_iteration / total_iterations) * 100
+
+        # Вивід поточного прогресу
+        print(f"Ітерація {current_iteration}/{total_iterations} ({progress_percent:.2f}%)")
+
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, len(data))
         batch = data[start_idx:end_idx]
@@ -198,15 +225,17 @@ def train_epoch(model, data, optimizer, batch_size=32, loss_fn=None):
         y = torch.tensor([item.y.item() for item in batch], dtype=torch.float)  # Одна мітка на граф
 
         # **Додано для перевірки**
-        print(f"x shape: {x.shape}, edge_index shape: {edge_index.shape}")
+        #print(f"x shape: {x.shape}, edge_index shape: {edge_index.shape}")
         # Скидання градієнтів
         optimizer.zero_grad()
 
         # Прогноз і обчислення втрат
-        outputs = model(x, edge_index, batch_tensor).squeeze()  # Передати batch
+        outputs = model(x, edge_index, batch_tensor)  # Передати batch
        # print(f"Outputs min: {outputs.min()}, max: {outputs.max()}")
-       # print(f"Labels min: {y.min()}, max: {y.max()}")
-        loss = loss_fn(outputs, y)
+        #print(f"outputs.shape: {outputs.shape}, y.shape: {y.shape}")
+        logger.debug(outputs, variable_name=f"outputs {outputs} ", max_lines=10, depth=10)
+        logger.debug(y, variable_name=f"y {y} ", max_lines=10, depth=10)
+        loss = loss_fn(outputs, y.unsqueeze(1))
 
         # Зворотнє поширення і оновлення ваг
         loss.backward()
@@ -243,10 +272,10 @@ def calculate_statistics(model, data):
             labels.append(label)
 
     # Розрахунок метрик
-    if hasattr(model, "requires_roc_auc") and model.requires_roc_auc:
-        roc_auc = calculate_roc_auc(labels, predictions)
-    else:
-        roc_auc = None
+    #if hasattr(model, "requires_roc_auc") and model.requires_roc_auc:
+    roc_auc = calculate_roc_auc(labels, predictions)
+    #else:
+    #    roc_auc = None
 
     precision, recall = calculate_precision_recall(labels, predictions)
 

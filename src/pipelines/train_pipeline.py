@@ -29,8 +29,8 @@ def train_model(
     checkpoint=None,
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
-    learning_rate=0.001,
-    batch_size=1
+    learning_rate=0.0001,
+    batch_size=2
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -51,17 +51,6 @@ def train_model(
             raise ValueError(f"Невідомий тип моделі: {model_type}")
 
         core_module = MODEL_MAP[model_type]
-        if model_type == "GNN":
-            model = core_module.GNN(input_dim=23, hidden_dim=64, output_dim=1)  # Ініціалізація GNN
-        else:
-            raise NotImplementedError(f"Підтримка моделі {model_type} не реалізована")
-
-        # Завантаження контрольної точки
-        start_epoch = 0
-        if resume and checkpoint:
-            if not is_file_exist(checkpoint):
-                raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint}")
-            start_epoch, _ = load_checkpoint(checkpoint, model)
 
         # Завантаження реєстрів
         normal_graphs = load_register('normalized_normal_graphs')
@@ -70,10 +59,19 @@ def train_model(
         if normal_graphs.empty or anomalous_graphs.empty:
             raise ValueError("Реєстри графів порожні. Перевірте дані!")
 
-        # Підготовка даних
-        data = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+        # Підготовка даних і визначення структури
+        data, input_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+        logger.info(f"Визначено input_dim: {input_dim}")
 
-        logger.debug(data, variable_name='core_module data', depth=30, max_lines=1000)
+        # Ініціалізація моделі з динамічним input_dim
+        model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1)
+
+        # Завантаження контрольної точки
+        start_epoch = 0
+        if resume and checkpoint:
+            if not is_file_exist(checkpoint):
+                raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint}")
+            start_epoch, _ = load_checkpoint(checkpoint, model)
 
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio)
@@ -85,6 +83,7 @@ def train_model(
 
         for epoch in range(start_epoch, num_epochs):
             logger.info(f"Епоха {epoch + 1}/{num_epochs}")
+            print(f"Епоха {epoch + 1}/{num_epochs}")
             stats["epochs"].append(epoch + 1)
 
             # Навчання за епоху
@@ -103,12 +102,14 @@ def train_model(
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=None, epoch=epoch, loss=train_loss, file_path=checkpoint_path)
 
-        # Тестування
-        test_stats = core_module.calculate_statistics(model, test_data)
-        logger.info(f"Статистика тестування: {test_stats}")
+            # Тестування після кожної епохи
+            test_stats = core_module.calculate_statistics(model, test_data)
+            logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
 
-        # Збереження статистики та візуалізація
-        save_training_diagram(stats, f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training.png", test_stats)
+            # Збереження статистики та візуалізація після кожної епохи
+            save_training_diagram(stats,
+                                  f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}.png",
+                                  test_stats)
 
         logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")
 

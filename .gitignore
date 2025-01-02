@@ -1,4 +1,5 @@
 .env
 logs/
 data/
+nn_models/checkpoints
 src/config/secrets.py

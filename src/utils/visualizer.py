@@ -15,7 +15,7 @@ def save_training_diagram(stats, file_path, test_stats=None):
     :param file_path: Шлях для збереження графіка.
     :param test_stats: Метрики тестових даних (словник).
     """
-    plt.figure()
+    plt.figure(figsize=(19.2, 10.8))
 
     # Графіки навчання та валідації
     plt.plot(stats['epochs'], stats['train_loss'], label='Train Loss')
@@ -36,7 +36,7 @@ def save_training_diagram(stats, file_path, test_stats=None):
     plt.xlabel('Epochs')
     plt.ylabel('Metrics')
     plt.legend()
-    plt.savefig(file_path)
+    plt.savefig(file_path, dpi=100)
     plt.close()
 
 

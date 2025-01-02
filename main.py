@@ -28,6 +28,10 @@ def main():
                             help="Тип запуску: start / resume / retrain")
         parser.add_argument("--checkpoint", type=str,
                             help="Назва checkpoint для віднрвлення навчання")
+        parser.add_argument("--normal_var", type=int,
+                            help="Кількість згенерованих нормальних графів ")
+        parser.add_argument("--anomaly_var", type=int,
+                            help="Кількість згенерованих аномальних графів ")
         args = parser.parse_args()
 
         # Вибір режиму роботи
