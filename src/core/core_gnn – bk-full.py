@@ -19,7 +19,11 @@ class GNN(nn.Module):
         self.global_pool = global_mean_pool
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.activation = nn.Sigmoid()
-        self.edge_processor = nn.Linear(edge_dim, hidden_dim) if edge_dim is not None else None
+        # Якщо є edge_attr, додати обробку
+        if edge_dim is not None:
+            self.edge_processor = nn.Linear(edge_dim, hidden_dim)  # Лінійний шар для обробки атрибутів ребер
+        else:
+            self.edge_processor = None
 
     def forward(self, x, edge_index, batch, edge_attr=None):
         # Перевірка вхідних даних
@@ -38,9 +42,6 @@ class GNN(nn.Module):
         x = torch.relu(self.conv2(x, edge_index))
        # print(f"After conv2: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
 
-        if edge_attr is not None:
-            x = x + edge_features  # Додавання впливу атрибутів ребер
-
         # Глобальний пулінг
         x = self.global_pool(x, batch)
         #print(f"After pooling: min {x.min()}, max {x.max()}, contains nan: {torch.isnan(x).any()}")
@@ -51,6 +52,71 @@ class GNN(nn.Module):
 
         return x
 
+
+def transform_graph(graph, label):
+    """
+    Transforms a NetworkX graph into a PyTorch Geometric Data object.
+
+    :param graph: NetworkX graph.
+    :param label: Label of the graph (0 - normal, 1 - anomalous).
+    :return: PyTorch Geometric Data object.
+    """
+    node_map = {node: idx for idx, node in enumerate(graph.nodes())}
+
+    # Node attributes
+    numeric_attrs = graph.graph.get("numeric_attrs", [])
+    node_features = []
+    for _, node_data in graph.nodes(data=True):
+        features = [
+            float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
+            for attr in numeric_attrs
+        ]
+        node_features.append(features)
+
+    x = torch.tensor(node_features, dtype=torch.float)
+    if torch.isnan(x).any():
+        print(f"Node features contain nan: {x}")
+
+    # Edge attributes
+    edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
+    edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+    edge_attr = None
+    if graph.graph.get("edge_attrs"):
+        edge_attr = torch.tensor(
+            [
+                [float(edge_data.get(attr, 0)) if isinstance(edge_data.get(attr), (int, float)) else 0.0
+                 for attr in graph.graph["edge_attrs"]]
+                for _, _, edge_data in graph.edges(data=True)
+            ],
+            dtype=torch.float
+        )
+        if torch.isnan(edge_attr).any():
+            print(f"Edge attributes contain nan: {edge_attr}")
+
+    # Global attributes
+    global_features = []
+    for node, node_data in graph.nodes(data=True):
+        if node_data.get("type") == "startEvent":
+            global_features = [
+                float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
+                for attr in graph.graph.get("global_attrs", [])
+            ]
+            break
+
+    global_features = torch.tensor(global_features, dtype=torch.float)
+    if torch.isnan(global_features).any():
+        print(f"Global features contain nan: {global_features}")
+
+    data = Data(
+        x=x,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        y=torch.tensor([label], dtype=torch.float),
+        global_features=global_features
+    )
+
+    return data
 
 def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     """
@@ -88,48 +154,6 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         return list(numeric_attrs), list(global_attrs), list(edge_attrs)
 
-    def transform_graph(graph, label):
-        """
-        Transforms a NetworkX graph into a PyTorch Geometric Data object.
-
-        :param graph: NetworkX graph.
-        :param label: Label of the graph (0 - normal, 1 - anomalous).
-        :return: PyTorch Geometric Data object.
-        """
-        node_map = {node: idx for idx, node in enumerate(graph.nodes())}
-
-        # Node attributes
-        numeric_attrs = graph.graph.get("numeric_attrs", [])
-        node_features = []
-        for _, node_data in graph.nodes(data=True):
-            features = [
-                float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
-                for attr in numeric_attrs
-            ]
-            node_features.append(features)
-
-        x = torch.tensor(node_features, dtype=torch.float)
-
-        # Edge attributes
-        edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-
-        edge_attr = None
-        if graph.graph.get("edge_attrs"):
-            edge_attr = torch.tensor(
-                [
-                    [float(edge_data.get(attr, 0)) if isinstance(edge_data.get(attr), (int, float)) else 0.0
-                     for attr in graph.graph["edge_attrs"]]
-                    for _, _, edge_data in graph.edges(data=True)
-                ],
-                dtype=torch.float
-            )
-
-        # Global attributes (if needed)
-        y = torch.tensor([label], dtype=torch.float)
-
-        return Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
-
     for graph_file in normal_graphs["graph_path"]:
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
@@ -139,10 +163,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 0)
-
-        if data.edge_index.size(1) > 0:  # Перевірка на наявність зв'язків
-            data_list.append(data)
+        data = transform_graph(graph, label=0)  # Мітка для нормальних графів
+        data.y = torch.tensor([0], dtype=torch.float)  # Додаємо мітку графу
+        data_list.append(data)
 
     for graph_file in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"]:
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])
@@ -153,13 +176,8 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 1)
-
-        # Перевірка на коректність edge_index
-        if data.edge_index.numel() == 0 or data.edge_index.size(0) != 2:
-            logger.warning(f"Graph {graph_file} має некоректний edge_index. Пропущено.")
-            continue
-
+        data = transform_graph(graph, label=1)  # Мітка для аномальних графів
+        data.y = torch.tensor([1], dtype=torch.float)  # Додаємо мітку графу
         data_list.append(data)
 
     return data_list

@@ -182,8 +182,14 @@ def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
         for attr, value in data.items():
             if attr in global_stats["numeric"]:
                 stats = global_stats["numeric"][attr]
-                if stats["max"] > stats["min"]:
-                    data[attr] = (float(value) - stats["min"]) / (stats["max"] - stats["min"])
+                try:
+                    numeric_value = float(value)
+                    if stats["max"] > stats["min"]:
+                        data[attr] = (numeric_value - stats["min"]) / (stats["max"] - stats["min"])
+                    else:
+                        data[attr] = 0.0
+                except (ValueError, TypeError):
+                    data[attr] = 0.0
             elif attr in global_stats["text"]:
                 mapping = {v: i for i, v in enumerate(global_stats["text"][attr]["unique_values"])}
                 data[attr] = mapping.get(value, -1)
@@ -193,12 +199,30 @@ def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
         for attr, value in data.items():
             if attr in global_stats["numeric"]:
                 stats = global_stats["numeric"][attr]
-                if stats["max"] > stats["min"]:
-                    data[attr] = (float(value) - stats["min"]) / (stats["max"] - stats["min"])
+                try:
+                    numeric_value = float(value)
+                    if stats["max"] > stats["min"]:
+                        data[attr] = (numeric_value - stats["min"]) / (stats["max"] - stats["min"])
+                    else:
+                        data[attr] = 0.0
+                except (ValueError, TypeError):
+                    data[attr] = 0.0
             elif attr in global_stats["text"]:
                 mapping = {v: i for i, v in enumerate(global_stats["text"][attr]["unique_values"])}
                 data[attr] = mapping.get(value, -1)
 
+    # Логування некоректних значень
+    for node, data in normalized_graph.nodes(data=True):
+        for attr, value in data.items():
+            if isinstance(value, (float, np.number)) and np.isnan(value):
+                logger.error(f"Node {node} has NaN in attribute {attr}")
+
+    for u, v, data in normalized_graph.edges(data=True):
+        for attr, value in data.items():
+            if isinstance(value, (float, np.number)) and np.isnan(value):
+                logger.error(f"Edge ({u}, {v}) has NaN in attribute {attr}")
+
     return normalized_graph
+
 
 

@@ -30,7 +30,7 @@ def train_model(
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=32
+    batch_size=1
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -73,7 +73,7 @@ def train_model(
         # Підготовка даних
         data = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
 
-        logger.debug(data, variable_name='core_module data', depth=30, max_lines=30)
+        logger.debug(data, variable_name='core_module data', depth=30, max_lines=1000)
 
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio)
