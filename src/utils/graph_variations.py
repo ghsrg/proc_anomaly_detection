@@ -222,7 +222,7 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
     :param params: Параметри для генерації аномалії.
     :return: Модифікований граф і параметри генерації.
     """
-
+    visualize_graph_with_dot(graph)
     modified_graph = graph.copy()
     anomaly_params = {"type": "anomaly", "anomaly_type": anomaly_type}
 
@@ -234,7 +234,7 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                 modified_graph.remove_node(node)
                 logger.info(f"Видалено вузол: {node}")
             anomaly_params["removed_nodes"] = nodes_to_remove
-
+            visualize_graph_with_dot(modified_graph)
         elif anomaly_type == "duplicate_steps":
             # Дублювання випадкових вузлів
             nodes_to_duplicate = random.sample(list(modified_graph.nodes), max(1, len(modified_graph.nodes) // 10))

@@ -80,29 +80,32 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         return list(numeric_attrs), list(global_attrs), list(edge_attrs)
 
-    def transform_graph(graph, label):
+    def transform_graph(graph, label, node_attrs, edge_attrs):
         """
-        Transforms a NetworkX graph into a PyTorch Geometric Data object.
+        Transforms a NetworkX graph into a PyTorch Geometric Data object, використовуючи лише зазначені атрибути.
 
         :param graph: NetworkX graph.
         :param label: Label of the graph (0 - normal, 1 - anomalous).
+        :param node_attrs: Масив назв атрибутів вузлів, які слід додати до навчання.
+        :param edge_attrs: Масив назв атрибутів ребер, які слід додати до навчання.
         :return: PyTorch Geometric Data object.
         """
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
         nonlocal max_features
-        # Node attributes
-        numeric_attrs = graph.graph.get("numeric_attrs", [])
+
+        # **Вузлові атрибути**
         node_features = []
         for node_id, node_data in graph.nodes(data=True):
             features = [
                 float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
-                for attr in numeric_attrs
+                for attr in node_attrs
             ]
             node_features.append(features)
 
-        # Логування атрибутів вузла
-        print(f"Вузол {node_id}: {node_data}")
-        print(f"Атрибути для моделі: {features}")
+            # Логування вузлових атрибутів
+            #selected_node_data = {attr: node_data.get(attr, None) for attr in node_attrs}
+            #print(f"Вузол {node_id} (вузлові атрибути): {selected_node_data}")
+            #print(f"Атрибути для моделі (вузли): {features}")
 
         x = torch.tensor(node_features, dtype=torch.float)
         if torch.isnan(x).any():
@@ -112,24 +115,33 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         else:
             logger.warning(f"Graph without numeric node attributes detected.")
 
-        # Edge attributes
+        # **Атрибути ребер**
         edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
         edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
 
         edge_attr = None
-        if graph.graph.get("edge_attrs"):
+        if edge_attrs:
             edge_attr = torch.tensor(
                 [
-                    [float(edge_data.get(attr, 0)) if isinstance(edge_data.get(attr), (int, float)) else 0.0
-                     for attr in graph.graph["edge_attrs"]]
+                    [
+                        float(edge_data.get(attr, 0)) if isinstance(edge_data.get(attr), (int, float)) else 0.0
+                        for attr in edge_attrs
+                    ]
                     for _, _, edge_data in graph.edges(data=True)
                 ],
                 dtype=torch.float
             )
+
+            # Логування атрибутів ребер
+            #for node1, node2, edge_data in graph.edges(data=True):
+            #    edge = (node1, node2)
+            #    selected_edge_data = {attr: edge_data.get(attr, None) for attr in edge_attrs}
+            #    print(f"Ребро {edge} (атрибути ребер): {selected_edge_data}")
+
             if torch.isnan(edge_attr).any():
                 logger.warning(f"Edge attributes contain nan: {edge_attr}")
 
-        # Global attributes
+        # Глобальні атрибути
         global_features = []
         for node, node_data in graph.nodes(data=True):
             if node_data.get("type") == "startEvent":
@@ -153,6 +165,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         return data
 
+    selected_node_attrs = ["type", "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "SEQUENCE_COUNTER_", "overdue_work", "duration_work"]
+    selected_edge_attrs = ["DURATION_", "taskaction_code"]
+    #selected_attrs = ["DURATION_"]
     for idx, graph_file in enumerate(normal_graphs["graph_path"], start=1):
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
@@ -160,14 +175,14 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         # Логування прогресу завантаження
         total_graphs = len(normal_graphs["graph_path"])
         progress_percent = (idx / total_graphs) * 100
-        print(f"Завантаження нормального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
+        print(f"Підготовка нормального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
         graph.graph["numeric_attrs"] = numeric_attrs
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 0)
+        data = transform_graph(graph, 0, selected_node_attrs, selected_edge_attrs)
 
         if data.edge_index.size(1) > 5:  # Беремо графи які мають більше 5 зв'язків
             data_list.append(data)
@@ -181,15 +196,15 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         # Логування прогресу завантаження
         total_graphs = len(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"])
         progress_percent = (idx / total_graphs) * 100
-        print(f"Завантаження аномального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
+        print(f"Підготовка аномального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
         graph.graph["numeric_attrs"] = numeric_attrs
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 1)
-        if data.edge_index.dim() < 2 or data.edge_index.size(1) > 4:  #  Беремо графи які мають більше 5 зв'язків
+        data = transform_graph(graph, 1, selected_node_attrs, selected_edge_attrs)
+        if data.edge_index.dim() < 2 or data.edge_index.size(1) > 5:  #  Беремо графи які мають більше 5 зв'язків
 
             # Перевірка на коректність edge_index
             if data.edge_index.numel() == 0 or data.edge_index.size(0) != 2:

@@ -1,6 +1,7 @@
 from sklearn.metrics import precision_score, recall_score, roc_auc_score, f1_score
 import numpy as np
 
+
 def calculate_precision_recall(true_labels, predictions):
     """
     Розраховує Precision і Recall для моделі.
@@ -16,6 +17,7 @@ def calculate_precision_recall(true_labels, predictions):
     recall = recall_score(true_labels, binary_predictions, zero_division=0)
 
     return precision, recall
+
 
 def calculate_roc_auc(true_labels, predictions):
     """
@@ -33,6 +35,7 @@ def calculate_roc_auc(true_labels, predictions):
         roc_auc = np.nan
 
     return roc_auc
+
 
 def calculate_f1_score(true_labels, predictions):
     """

@@ -37,7 +37,7 @@ def run_learning_mode(args):
         if action == "start":
             # Почати навчання з початку
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='GNN_missing_steps_epoch_30', num_epochs=20)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', num_epochs=20)
 
         elif action == "resume":
             # Продовжити навчання з контрольної точки
