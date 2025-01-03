@@ -19,9 +19,10 @@ def save_training_diagram(stats, file_path, test_stats=None):
 
     # Графіки навчання та валідації
     plt.plot(stats['epochs'], stats['train_loss'], label='Train Loss')
-    plt.plot(stats['epochs'], stats['val_precision'], label='Validation Precision')
-    plt.plot(stats['epochs'], stats['val_recall'], label='Validation Recall')
-    plt.plot(stats['epochs'], stats['val_roc_auc'], label='Validation ROC AUC')
+    plt.plot(stats['epochs'], stats['val_precision'], label='Precision')
+    plt.plot(stats['epochs'], stats['val_recall'], label='Recall')
+    plt.plot(stats['epochs'], stats['val_roc_auc'], label='ROC AUC')
+    plt.plot(stats['epochs'], stats['val_f1_score'], label='F1_score')
 
     # Тестові метрики (додаються, якщо значення не None)
     if test_stats:
@@ -31,6 +32,11 @@ def save_training_diagram(stats, file_path, test_stats=None):
             plt.axhline(y=test_stats['recall'], color='green', linestyle='--', label='Test Recall')
         if test_stats.get('roc_auc') is not None:
             plt.axhline(y=test_stats['roc_auc'], color='red', linestyle='--', label='Test ROC AUC')
+        if test_stats.get('f1_score') is not None:
+            plt.axhline(y=test_stats['f1_score'], color='black', linestyle='--', label='Test F1_score')
+
+    # Обмеження шкали Y
+    plt.ylim(0, 1)
 
     # Оформлення графіка
     plt.xlabel('Epochs')

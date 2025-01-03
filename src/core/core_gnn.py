@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch_geometric.nn import GCNConv
 from src.utils.logger import get_logger
-from src.core.metrics import calculate_precision_recall, calculate_roc_auc
+from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score
 from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
@@ -93,12 +93,16 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         # Node attributes
         numeric_attrs = graph.graph.get("numeric_attrs", [])
         node_features = []
-        for _, node_data in graph.nodes(data=True):
+        for node_id, node_data in graph.nodes(data=True):
             features = [
                 float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
                 for attr in numeric_attrs
             ]
             node_features.append(features)
+
+        # Логування атрибутів вузла
+        print(f"Вузол {node_id}: {node_data}")
+        print(f"Атрибути для моделі: {features}")
 
         x = torch.tensor(node_features, dtype=torch.float)
         if torch.isnan(x).any():
@@ -149,9 +153,14 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         return data
 
-    for graph_file in normal_graphs["graph_path"]:
+    for idx, graph_file in enumerate(normal_graphs["graph_path"], start=1):
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
+
+        # Логування прогресу завантаження
+        total_graphs = len(normal_graphs["graph_path"])
+        progress_percent = (idx / total_graphs) * 100
+        print(f"Завантаження нормального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
         graph.graph["numeric_attrs"] = numeric_attrs
@@ -160,12 +169,19 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         data = transform_graph(graph, 0)
 
-        if data.edge_index.size(1) > 0:  # Перевірка на наявність зв'язків
+        if data.edge_index.size(1) > 5:  # Беремо графи які мають більше 5 зв'язків
             data_list.append(data)
+        else:
+            print(f"Пропускаємо нормальний граф {graph_file} кількість зв'язків {data.edge_index.size(1)}")
 
-    for graph_file in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"]:
+    for idx, graph_file in enumerate(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"], start=1):
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
+
+        # Логування прогресу завантаження
+        total_graphs = len(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"])
+        progress_percent = (idx / total_graphs) * 100
+        print(f"Завантаження аномального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
         graph.graph["numeric_attrs"] = numeric_attrs
@@ -173,13 +189,17 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         graph.graph["edge_attrs"] = edge_attrs
 
         data = transform_graph(graph, 1)
+        if data.edge_index.dim() < 2 or data.edge_index.size(1) > 4:  #  Беремо графи які мають більше 5 зв'язків
 
-        # Перевірка на коректність edge_index
-        if data.edge_index.numel() == 0 or data.edge_index.size(0) != 2:
-            logger.warning(f"Graph {graph_file} має некоректний edge_index. Пропущено.")
-            continue
+            # Перевірка на коректність edge_index
+            if data.edge_index.numel() == 0 or data.edge_index.size(0) != 2:
+                logger.warning(f"Graph {graph_file} має некоректний edge_index. Пропущено.")
+                print(f"Graph {graph_file} має некоректний edge_index. Пропущено.")
+                continue
 
-        data_list.append(data)
+            data_list.append(data)
+        else:
+            print(f"Пропускаємо аномальний граф {graph_file} кількість зв'язків {data.edge_index.size(1)}")
 
     return data_list, max_features
 
@@ -279,10 +299,12 @@ def calculate_statistics(model, data):
 
     precision, recall = calculate_precision_recall(labels, predictions)
 
+    f1_score = calculate_f1_score(labels, predictions)
     stats = {
         "precision": precision,
         "recall": recall,
-        "roc_auc": roc_auc
+        "roc_auc": roc_auc,
+        "f1_score": f1_score
     }
 
     return stats

@@ -54,7 +54,7 @@ def generate_variations(total_count, anomaly_type=None):
                 # Завантаження оригінального графа
                 orig_graph = load_graph(file_name=graph_file_name, path=GRAPH_PATH)
                 cl_graph = clean_graph(orig_graph)
-                graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURATION_', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'DURATION_', 'duration_work'], date_attrs=['doc_createdate', 'duration_work', 'DateSentSO','DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_'], default_numeric=0, default_date='1970-01-01T00:00:00.0')
+                graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURATION_', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'duration_work'], date_attrs=['doc_createdate', 'DateSentSO', 'DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_', 'first_view'], default_numeric=0, default_date='1970-01-01T00:00:00.0')
 
                 # Розрахунок кількості варіацій для поточного графа
                 variations_for_this_graph = variations_per_graph

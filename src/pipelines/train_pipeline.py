@@ -30,7 +30,7 @@ def train_model(
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.0001,
-    batch_size=2
+    batch_size=32
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -79,8 +79,8 @@ def train_model(
         # Оптимізатор
         optimizer = core_module.create_optimizer(model, learning_rate)
 
-        stats = {"epochs": [], "train_loss": [], "val_precision": [], "val_recall": [], "val_roc_auc": []}
-
+        stats = {"epochs": [], "train_loss": [], "val_precision": [], "val_recall": [], "val_roc_auc": [], "val_f1_score": []}
+        test_stats = {}
         for epoch in range(start_epoch, num_epochs):
             logger.info(f"Епоха {epoch + 1}/{num_epochs}")
             print(f"Епоха {epoch + 1}/{num_epochs}")
@@ -96,20 +96,26 @@ def train_model(
             stats["val_precision"].append(val_stats["precision"])
             stats["val_recall"].append(val_stats["recall"])
             stats["val_roc_auc"].append(val_stats.get("roc_auc", None))
+            stats["val_f1_score"].append(val_stats.get("f1_score", None))
             logger.info(f"Статистика валідації: {val_stats}")
 
             # Збереження контрольної точки
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=None, epoch=epoch, loss=train_loss, file_path=checkpoint_path)
 
-            # Тестування після кожної епохи
-            test_stats = core_module.calculate_statistics(model, test_data)
-            logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
-
-            # Збереження статистики та візуалізація після кожної епохи
+             # Збереження статистики та візуалізація після кожної епохи
             save_training_diagram(stats,
                                   f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}.png",
                                   test_stats)
+
+        # Тестування після кожної епохи
+        test_stats = core_module.calculate_statistics(model, test_data)
+        logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
+
+        # Збереження фінальної статистики
+        save_training_diagram(stats,
+                              f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}_Final.png",
+                              test_stats)
 
         logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")
 
