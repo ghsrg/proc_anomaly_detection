@@ -32,6 +32,8 @@ def main():
                             help="Кількість згенерованих нормальних графів ")
         parser.add_argument("--anomaly_var", type=int,
                             help="Кількість згенерованих аномальних графів ")
+        parser.add_argument("--data_file", type=str,
+                            help="Посилання на файл з підготовленими даними ")
         args = parser.parse_args()
 
         # Вибір режиму роботи

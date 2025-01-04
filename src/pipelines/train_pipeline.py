@@ -1,9 +1,9 @@
 
 from src.utils.logger import get_logger
-from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_register, load_graph, save_graph
+from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import save_training_diagram
-from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
+from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data
 import src.core.core_gnn as gnn_core
 #import src.core.core_rnn as rnn_core
@@ -27,10 +27,11 @@ def train_model(
     anomaly_type,
     resume=False,
     checkpoint=None,
+    data_file=None,
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=24
+    batch_size=24,
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -52,15 +53,30 @@ def train_model(
 
         core_module = MODEL_MAP[model_type]
 
-        # Завантаження реєстрів
-        normal_graphs = load_register('normalized_normal_graphs')
-        anomalous_graphs = load_register('normalized_anomalous_graphs')
 
-        if normal_graphs.empty or anomalous_graphs.empty:
-            raise ValueError("Реєстри графів порожні. Перевірте дані!")
 
-        # Підготовка даних і визначення структури
-        data, input_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+        data = None
+        input_dim = None
+        if data_file:  # Спроба завантажити підготовлені дані
+            data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
+            data, input_dim = load_prepared_data(data_path)
+
+        if data is None or input_dim is None:
+            logger.info(f"data_list чи input_dim пусті, потрібна підготовка даних...")
+            # Завантаження реєстрів
+            normal_graphs = load_register('normalized_normal_graphs')
+            anomalous_graphs = load_register('normalized_anomalous_graphs')
+
+            if normal_graphs.empty or anomalous_graphs.empty:
+                raise ValueError("Реєстри графів порожні. Перевірте дані!")
+            # Підготовка даних і визначення структури
+            data, input_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+            # Збереження підготовлених даних
+            data_file = 'prepared_data'
+            data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
+            save_prepared_data(data, input_dim, data_path)
+
+        print(f"Визначено input_dim: {input_dim}")
         logger.info(f"Визначено input_dim: {input_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
@@ -78,7 +94,7 @@ def train_model(
             checkpoint_path = join_path([NN_MODELS_CHECKPOINTS_PATH, f"{checkpoint}.pt"])
             if not is_file_exist(checkpoint_path):
                 raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint_path}")
-            start_epoch, _ = load_checkpoint(checkpoint_path, model, optimizer)
+            start_epoch, _, stats = load_checkpoint(checkpoint_path, model, optimizer, stats)
 
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio)
@@ -105,7 +121,7 @@ def train_model(
             # Збереження контрольної точки
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
             # TODO: Додати збереження та відновлення статистики, щоб при продовженні графіки нормально зберігались
-            save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path)
+            save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Тестування після кожної епохи
             #test_stats = core_module.calculate_statistics(model, test_data)

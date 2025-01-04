@@ -44,6 +44,7 @@ TEST_DIAGRAMS_PATH = join_path([BASE_OUTPUTS_PATH, 'test_diagrams'])
 BASE_NN_MODELS_PATH = join_path(['nn_models'])
 NN_MODELS_CHECKPOINTS_PATH = join_path([BASE_NN_MODELS_PATH, 'checkpoints'])
 NN_MODELS_TRAINED_PATH = join_path([BASE_NN_MODELS_PATH, 'trained'])
+NN_MODELS_DATA_PATH = join_path([BASE_NN_MODELS_PATH, 'input_data'])
 
 # Створення необхідних тек, якщо їх немає
 make_dir(LOGS_PATH)
@@ -61,3 +62,4 @@ make_dir(LEARN_DIAGRAMS_PATH)
 make_dir(TEST_DIAGRAMS_PATH)
 make_dir(NN_MODELS_CHECKPOINTS_PATH)
 make_dir(NN_MODELS_TRAINED_PATH)
+make_dir(NN_MODELS_DATA_PATH)

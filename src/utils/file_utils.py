@@ -164,7 +164,7 @@ def load_register(file_name: str, columns=None) -> pd.DataFrame:
     logger.info(f"Дані завантажено з {reg_data_path}")
     return df
 
-def save_checkpoint(model, optimizer, epoch, loss, file_path):
+def save_checkpoint(model, optimizer, epoch, loss, file_path, stats=None):
     """
     Зберігає стан моделі, оптимізатора та параметри навчання.
 
@@ -179,12 +179,13 @@ def save_checkpoint(model, optimizer, epoch, loss, file_path):
         "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
         "epoch": epoch,
         "loss": loss,
+        "stats": stats if stats else {},  # Додаємо статистику, якщо вона передана
     }
     torch.save(checkpoint, file_path)
     logger.info(f"Чекпоінт збережено у {file_path}.")
 
 
-def load_checkpoint(file_path, model, optimizer=None):
+def load_checkpoint(file_path, model, optimizer=None, stats=None):
     """
     Завантажує стан моделі та (опціонально) оптимізатора.
 
@@ -201,11 +202,14 @@ def load_checkpoint(file_path, model, optimizer=None):
         model.load_state_dict(checkpoint['model_state_dict'])
         if optimizer:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if stats:
+            stats = checkpoint.get('stats')
+
         epoch = checkpoint.get('epoch', 0)
         loss = checkpoint.get('loss', None)
 
         print(f"Чекпоінт завантажено з {file_path}")
-        return epoch, loss
+        return epoch, loss, stats
     except Exception as e:
         raise RuntimeError(f"Помилка під час завантаження чекпоінта: {file_path}. Деталі: {str(e)}")
 
@@ -219,3 +223,27 @@ def save_training_progress(register_name, progress_data):
     register = register.append(progress_data, ignore_index=True)
     save_register(register, register_name)
     logger.info(f"Прогрес навчання збережено у реєстр {register_name}.")
+
+def save_prepared_data(data, input_dim, file_path):
+    """
+    Зберігає підготовлені дані у файл.
+    :param data_list: Список підготовлених об'єктів Data.
+    :param input_dim: Вхідний розмір для моделі.
+    :param file_path: Шлях для збереження файлу.
+    """
+    torch.save({"data": data, "input_dim": input_dim}, file_path)
+    print(f"Підготовлені дані збережено у {file_path}.")
+
+def load_prepared_data(file_path):
+    """
+    Завантажує підготовлені дані з файлу.
+    :param file_path: Шлях до файлу.
+    :return: data_list, input_dim.
+    """
+    try:
+        checkpoint = torch.load(file_path)
+        print(f"Підготовлені дані завантажено з {file_path}.")
+        return checkpoint["data"], checkpoint["input_dim"]
+    except FileNotFoundError:
+        print(f"Файл з підготовленими даними не знайдено: {file_path}.")
+        return None, None
