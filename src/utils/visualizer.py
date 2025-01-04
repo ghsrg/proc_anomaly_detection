@@ -6,10 +6,12 @@ import pandas as pd
 
 logger = get_logger(__name__)
 
+import matplotlib.pyplot as plt
+
 
 def save_training_diagram(stats, file_path, test_stats=None):
     """
-    Зберігає графік навчання та валідації, додаючи, за потреби, тестові метрики.
+    Зберігає графік навчання та валідації, додаючи підписи значень для обраних епох.
 
     :param stats: Статистика навчання (словник зі списками по епохах).
     :param file_path: Шлях для збереження графіка.
@@ -18,25 +20,42 @@ def save_training_diagram(stats, file_path, test_stats=None):
     plt.figure(figsize=(19.2, 10.8))
 
     # Графіки навчання та валідації
-    plt.plot(stats['epochs'], stats['train_loss'], label='Train Loss', linestyle='-', color='orange')
-    plt.plot(stats['epochs'], stats['val_precision'], label='Precision', linestyle='-', color='blue')
-    plt.plot(stats['epochs'], stats['val_recall'], label='Recall', linestyle='-', color='green')
-    plt.plot(stats['epochs'], stats['val_roc_auc'], label='ROC AUC', linestyle='-', color='red')
-    plt.plot(stats['epochs'], stats['val_f1_score'], label='F1_score', linestyle='-', color='grey')
+    metrics = {
+        'Train Loss': ('train_loss', 'orange'),
+        'Precision': ('val_precision', 'blue'),
+        'Recall': ('val_recall', 'green'),
+        'ROC AUC': ('val_roc_auc', 'red'),
+        'F1-score': ('val_f1_score', 'grey')
+    }
+
+    num_epochs = len(stats['epochs'])
+    step = max(1, num_epochs // 6)  # Крок для підписів
+
+    for label, (key, color) in metrics.items():
+        plt.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color)
+
+        # Додавання підписів лише для певних епох
+        for i, (epoch, value) in enumerate(zip(stats['epochs'], stats[key])):
+            if i % step == 0 or i == num_epochs - 1:  # Додаємо підписи кожен step або для останньої епохи
+                plt.text(epoch, value, f"{value:.4f}", color=color, fontsize=8, ha='right', va='bottom')
 
     # Тестові метрики (додаються, якщо значення не None)
     if test_stats:
-        if test_stats.get('precision') is not None:
-            plt.axhline(y=test_stats['precision'], color='blue', linestyle='--', label='Test Precision')
-        if test_stats.get('recall') is not None:
-            plt.axhline(y=test_stats['recall'], color='green', linestyle='--', label='Test Recall')
-        if test_stats.get('roc_auc') is not None:
-            plt.axhline(y=test_stats['roc_auc'], color='red', linestyle='--', label='Test ROC AUC')
-        if test_stats.get('f1_score') is not None:
-            plt.axhline(y=test_stats['f1_score'], color='grey', linestyle='--', label='Test F1_score')
+        test_metrics = {
+            'Test Precision': ('precision', 'blue'),
+            'Test Recall': ('recall', 'green'),
+            'Test ROC AUC': ('roc_auc', 'red'),
+            'Test F1-score': ('f1_score', 'grey')
+        }
+        for label, (key, color) in test_metrics.items():
+            if test_stats.get(key) is not None:
+                value = test_stats[key]
+                plt.axhline(y=value, color=color, linestyle='--', label=label)
+                # Додавання підпису для тестових метрик
+                plt.text(num_epochs, value, f"{value:.4f}", color=color, fontsize=8, ha='right', va='bottom')
 
     # Обмеження шкали Y
-    plt.ylim(-0.1, 1.1)
+    plt.ylim(-0.05, 1.05)
 
     # Оформлення графіка
     plt.xlabel('Epochs')

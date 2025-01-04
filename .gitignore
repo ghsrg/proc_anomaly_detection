@@ -1,6 +1,6 @@
 .env
 logs/
 data/
-nn_models/
+/nn_models/
 src/config/secrets.py
 

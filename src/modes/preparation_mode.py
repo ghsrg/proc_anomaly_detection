@@ -13,7 +13,7 @@ def run_experimental_mode(args):
     Запуск попереднього режиму.
     """
     logger.info("Запуск режиму підготовки даних ...")
-    initialize_register("graph_register", ['doc_id', 'root_proc_id', 'graph_path', 'date'])
+    initialize_register("graph_register", ['doc_id', 'root_proc_id', 'graph_path', 'date', 'doc_info'])
 
     # Завантаження даних з системи
     if args.raw_reload:

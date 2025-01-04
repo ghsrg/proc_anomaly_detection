@@ -238,8 +238,8 @@ def analyze_documents(caption_filter=None):
         left_on='externalid',
         right_on='ID_'
     )
-    bpm_doc_purch = read_from_parquet("bpm_doc_purch")  #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
-    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions, bpm_doc_purch)
+    bpm_doc_info = read_from_parquet("bpm_doc_purch")  #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
+    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions, bpm_doc_info)
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
 
@@ -253,6 +253,23 @@ def analyze_documents(caption_filter=None):
     graph_reg.set_index(['doc_id', 'root_proc_id'], inplace=True)  # Установлюємо індекс для унікальності
 
     for doc_id, root_graphs in grouped_graph.items():
+        # Отримання даних по документу
+        doc_rows = bpm_doc_info[bpm_doc_info['doc_id'] == doc_id]
+        if doc_rows.empty:
+            logger.warning(f"Даних по документу {doc_id} не знайдено в файлі bpm_doc_info!")
+            doc_info = {}  # Пустий словник, якщо інформація відсутня
+        else:
+            # Витягуємо перший рядок (або конкретний рядок, якщо є критерії)
+            row = doc_rows.iloc[0]
+            doc_info = {
+                'doc_id': row['doc_id'],
+                'doc_subject': str(row['doc_subject']),
+                'docstate_code': str(row['docstate_code']),
+                'KindPurchase': str(row.get('KindPurchase', '')),
+                'TypePurchase': str(row.get('TypePurchase', '')),
+                'ClassSSD': str(row.get('ClassSSD', ''))
+            }
+
         for root_proc_id, graph in root_graphs.items():
             file_name = f"{doc_id}_{root_proc_id}"
             try:
@@ -264,7 +281,8 @@ def analyze_documents(caption_filter=None):
                     'doc_id': doc_id,
                     'root_proc_id': root_proc_id,
                     'graph_path': file_name,
-                    'date': pd.Timestamp.now().date()
+                    'date': pd.Timestamp.now().date(),
+                    'doc_info': doc_info
                 }])
                 new_record.set_index(['doc_id', 'root_proc_id'], inplace=True)
 

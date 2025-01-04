@@ -30,14 +30,14 @@ def run_learning_mode(args):
         model_type = args.model_type
         anomaly_type = args.anomaly_type
         action = args.action
-        checkpoint_path = args.checkpoint  # GNN_missing_steps_epoch_50
+        checkpoint_path = args.checkpoint  # GNN_missing_steps_epoch_20
 
         logger.info(f"Запуск режиму навчання для моделі {model_type} з аномалією {anomaly_type}.")
 
         if action == "start":
             # Почати навчання з початку
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', num_epochs=20)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', num_epochs=30)
 
         elif action == "resume":
             # Продовжити навчання з контрольної точки
@@ -46,7 +46,7 @@ def run_learning_mode(args):
                 return
 
             logger.info(f"Продовження навчання з контрольної точки: {checkpoint_path}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=True, checkpoint=checkpoint_path, num_epochs=50)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=True, checkpoint=checkpoint_path, num_epochs=30)
 
         elif action == "retrain":
             # Донавчання моделі
