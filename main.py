@@ -30,8 +30,10 @@ def main():
                             help="Назва checkpoint для віднрвлення навчання")
         parser.add_argument("--normal_var", type=int,
                             help="Кількість згенерованих нормальних графів ")
-        parser.add_argument("--anomaly_var", type=int,
-                            help="Кількість згенерованих аномальних графів ")
+        parser.add_argument("--missing_steps", type=int,
+                            help="Кількість згенерованих аномальних графів missing_steps")
+        parser.add_argument("--duplicate_steps", type=int,
+                            help="Кількість згенерованих аномальних графів duplicate_steps")
         parser.add_argument("--data_file", type=str,
                             help="Посилання на файл з підготовленими даними ")
         args = parser.parse_args()

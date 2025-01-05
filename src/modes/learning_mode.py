@@ -15,11 +15,11 @@ def run_learning_mode(args):
 
     :param args: Аргументи командного рядка для визначення сценарію навчання.
     """
-    initialize_register("normalized_normal_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params'])
-    initialize_register("normalized_anomalous_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params'])
+    initialize_register("normalized_normal_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params', 'doc_info'])
+    initialize_register("normalized_anomalous_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params', 'doc_info'])
 
     if args.normalize:
-        normalize_all_graphs()
+        normalize_all_graphs(min_nodes=11, min_edges=10)
     else:
         logger.info("Пропуск нормалізації. Використовуються готові нормалізовані графи.")
 
@@ -60,7 +60,7 @@ def run_learning_mode(args):
             retrain_model(model_type=model_type, anomaly_type=anomaly_type, checkpoint=checkpoint_path, data_file=data_file)
 
         else:
-            logger.error(f"Невідомий тип дії: {action}. Доступні дії: start, resume, retrain.")
+            logger.error(f"Невідомий тип дії навчання: {action}. Доступні дії: start, resume, retrain.")
 
     except Exception as e:
         logger.error(f"Помилка у режимі навчання: {e}")

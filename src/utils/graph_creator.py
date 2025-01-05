@@ -216,61 +216,6 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
 
                 # Будуємо граф
                 graph = build_process_graph(bpmn_model, root_proc_id, root_group, bpm_tasks, camunda_actions)
-               # TODO: Переробити зберігання загальних атрибутів в реєстрі
-
-                # Знаходимо стартовий вузол із типом 'startEvent'
-            #  start_nodes = [n for n, data in graph.nodes(data=True) if data.get('type') == 'startEvent']
-            #
-            #  # Перевіряємо, чи є такі вузли
-            #  if start_nodes:
-            #      start_node = start_nodes[0]  # Беремо перший знайдений вузол. Більше в нормлаьном графі бути не має
-            #      doc_rows = bpm_doc_purch[bpm_doc_purch['doc_id'] == doc_id]
-            #      if not doc_rows.empty:
-            #          row = doc_rows.iloc[0]  # Перший рядок
-            #          # Оновлюємо атрибути вузла
-            #          # !!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
-            #          doc_attr = {
-            #              'doc_id': row['doc_id'],
-            #              'doc_subject': str(row['doc_subject']),
-            #              'docstate_code': str(row['docstate_code']),
-            #              'KindPurchase': str(row['KindPurchase']),
-            #              'TypePurchase': str(row['TypePurchase']),
-            #              'ClassSSD': str(row['ClassSSD']),
-            #              'FlowType': str(row['FlowType']),
-            #              'CategoryL1': str(row['CategoryL1']),
-            #              'CategoryL2': str(row['CategoryL2']),
-            #              'CategoryL3': str(row['CategoryL3']),
-            #              'Company_SO': str(row['Company_SO']),
-            #              'ExpectedDate': row['ExpectedDate'].isoformat(),
-            #              'DateKTC': row['DateKTC'].isoformat(),
-            #              'DateInWorkKaM': row['DateInWorkKaM'].isoformat(),
-            #              'DateApprovalFD': row['DateApprovalFD'].isoformat(),
-            #              'DateApprovalStartProcurement': row['DateApprovalStartProcurement'].isoformat(),
-            #              'DateAppFunAss': row['DateAppFunAss'].isoformat(),
-            #              'DateAppCommAss': row['DateAppCommAss'].isoformat(),
-            #              'DateApprovalProcurementResults': row['DateApprovalProcurementResults'].isoformat(),
-            #              'DateAppProcCom': row['DateAppProcCom'].isoformat(),
-            #              'DateAppContract': row['DateAppContract'].isoformat(),
-            #              'DateSentSO': row['DateSentSO'].isoformat(),
-            #              'PurchasingBudget': str(row['PurchasingBudget']),
-            #              'InitialPrice': str(row['InitialPrice']),
-            #              'FinalPrice': str(row['FinalPrice']),
-            #              'doc_createdate': row['doc_createdate'].isoformat(),
-            #              'responsible_user_login': str(row['responsible_user_login']),
-            #              'CAM_user_login': str(row['CAM_user_login']),
-            #              'CEO2_user_login': str(row['CEO2_user_login']),
-            #              'BudgetAnalyst_user_login': str(row['BudgetAnalyst_user_login']),
-            #              'ContractManager_user_login': str(row['ContractManager_user_login']),
-            #              'ManagerFunction_user_login': str(row['ManagerFunction_user_login'])
-            #          }
-            #          #logger.debug(doc_attr, variable_name=f"{doc_attr} camunda_row", max_lines=30)
-            #          graph.nodes[start_node].update(doc_attr)
-            #      else:
-            #          logger.warning(
-            #              f"Даних по документу {doc_id} не знайдено в файлі bpm_doc_purch!")
-            #
-            #  else:
-            #      logger.warning(f"Вузлів із типом 'startEvent' не знайдено в ROOT_PROC_ID: {root_proc_id} не знайдено!")
 
                 if graph:
                     doc_graphs[root_proc_id] = graph
@@ -466,9 +411,9 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
 
                 # Оновлюємо атрибути ребра
                 graph.edges[source, target].update({
-                    'DURATION_': source_node.get('DURATION_', ''),
-                    'taskaction_code': source_node.get('taskaction_code', ''),
-                    'duration_work': target_node.get('duration_work', '')
+                    'DURATION_E': source_node.get('DURATION_', ''),
+                    'taskaction_code_E': source_node.get('taskaction_code', ''),
+                    'duration_work_E': target_node.get('duration_work', '')
                 })
 
         # Обробка callActivity

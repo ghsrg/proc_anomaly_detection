@@ -3,9 +3,11 @@ import uuid
 import json
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_register, load_graph, save_graph, load_register
+from src.utils.file_utils_l import join_path
 from src.config.config import GRAPH_PATH, NORMAL_GRAPH_PATH, ANOMALOUS_GRAPH_PATH
 from src.utils.graph_variations import generate_normal_graph, generate_anomalous_graph
 from src.utils.graph_utils import clean_graph, format_graph_values
+from src.utils.visualizer import visualize_graph_with_dot
 import traceback
 
 logger = get_logger(__name__)
@@ -49,6 +51,7 @@ def generate_variations(total_count, anomaly_type=None):
             doc_id = row['doc_id']
             root_proc_id = row['root_proc_id']
             graph_file_name = row['graph_path']
+            doc_info = row['doc_info']
 
             try:
                 # Завантаження оригінального графа
@@ -66,24 +69,28 @@ def generate_variations(total_count, anomaly_type=None):
                 if anomaly_type:
                     anomalous_graph, params = generate_anomalous_graph(graph, anomaly_type=anomaly_type)
                     save_graph(anomalous_graph, f"{original_id}_{graph_file_name}", variation_path)
+               #     visualize_graph_with_dot(anomalous_graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
                         'root_proc_id': root_proc_id,
                         'graph_path': f"{original_id}_{graph_file_name}",
                         'date': pd.Timestamp.now().date(),
-                        'params': json.dumps(params)  # Збереження параметрів як JSON-рядок
+                        'params': json.dumps(params),  # Збереження параметрів як JSON-рядок
+                        'doc_info': doc_info  # Збереження параметрів документа
                     })
                     logger.info(f"Збережено оригінальний аномальний граф {graph_file_name} з типом аномалії {anomaly_type}.")
                 else:
                     save_graph(graph, f"{original_id}_{graph_file_name}", variation_path)
+                #    visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
                         'root_proc_id': root_proc_id,
                         'graph_path': f"{original_id}_{graph_file_name}",
                         'date': pd.Timestamp.now().date(),
-                        'params': json.dumps({'type': 'original'})  # Збереження параметрів як JSON-рядок
+                        'params': json.dumps({'type': 'original'}),  # Збереження параметрів як JSON-рядок
+                        'doc_info': doc_info  # Збереження параметрів документа
                     })
                     logger.info(f"Збережено оригінальний граф {graph_file_name}.")
 
@@ -97,6 +104,8 @@ def generate_variations(total_count, anomaly_type=None):
 
                     file_name = f"{new_id}_{graph_file_name}"
                     save_graph(generated_graph, file_name, variation_path)
+                    #if anomaly_type:
+                    #    visualize_graph_with_dot(generated_graph, join_path([variation_path, file_name]))
 
                     new_variations.append({
                         'id': new_id,
@@ -104,7 +113,8 @@ def generate_variations(total_count, anomaly_type=None):
                         'root_proc_id': root_proc_id,
                         'graph_path': file_name,
                         'date': pd.Timestamp.now().date(),
-                        'params': json.dumps(params)  # Збереження параметрів як JSON-рядок
+                        'params': json.dumps(params),  # Збереження параметрів як JSON-рядок
+                        'doc_info': doc_info  # Збереження параметрів документа
                     })
                     logger.info(f"Згенеровано варіацію графа {file_name}.")
 

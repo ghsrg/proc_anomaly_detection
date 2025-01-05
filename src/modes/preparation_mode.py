@@ -29,17 +29,23 @@ def run_experimental_mode(args):
 
     # Герерація варіацій для навчання
     if args.graph_synthesis:
-        normal_var = args.normal_var
-        anomaly_var = args.anomaly_var
-        if normal_var > 0 and anomaly_var > 0:
-            initialize_register("normal_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params'])
-            initialize_register("anomalous_graphs", ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params'])
-            logger.info("Генерація додаткових графів для навчання.")
-
+        normal_var = args.normal_var or 0
+        missing_steps = args.missing_steps or 0
+        duplicate_steps = args.duplicate_steps or 0
+        initialize_register("normal_graphs",
+                            ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params', 'doc_info'])
+        initialize_register("anomalous_graphs",
+                            ['id', 'doc_id', 'root_proc_id', 'graph_path', 'date', 'params', 'doc_info'])
+        if normal_var > 0:
+            logger.info("Генерація додаткових нормальних графів для навчання.")
             generate_variations(normal_var, anomaly_type=None)  # missing_steps, duplicate_steps, wrong_route, abnormal_duration, abnormal_frequency, attribute_anomaly, incomplete_graph,
-            generate_variations(anomaly_var, anomaly_type='missing_steps')  # missing_steps, duplicate_steps, wrong_route, abnormal_duration, abnormal_frequency, attribute_anomaly, incomplete_graph,
-            #generate_variations(1000, anomaly_type='duplicate_steps')  # missing_steps, duplicate_steps, wrong_route, abnormal_duration, abnormal_frequency, attribute_anomaly, incomplete_graph,
-        else:
-            logger.error("Треба задати клькість генерації для normal_var та anomaly_var.")
+        if missing_steps > 0:
+            logger.info("Генерація аномальних missing_steps графів для навчання.")
+            generate_variations(missing_steps, anomaly_type='missing_steps')  # missing_steps, duplicate_steps, wrong_route, abnormal_duration, abnormal_frequency, attribute_anomaly, incomplete_graph,
+        if duplicate_steps > 0:
+            logger.info("Генерація аномальних duplicate_steps графів для навчання.")
+            generate_variations(duplicate_steps, anomaly_type='duplicate_steps')  # missing_steps, duplicate_steps, wrong_route, abnormal_duration, abnormal_frequency, attribute_anomaly, incomplete_graph,
+    else:
+        logger.error("Треба задати клькість генерації для normal_var та anomaly_var.")
 
     logger.info("Режим підготовки даних завершено.")

@@ -80,7 +80,7 @@ def visualize_graph_with_dot(graph, file_path=None):
     #graph = clean_graph(graph)
     pos = nx.nx_agraph.graphviz_layout(graph, prog='neato')
 
-    plt.figure(figsize=(100, 60))
+    plt.figure(figsize=(98, 55))
 
     node_labels = {}
     fill_colors = []
@@ -179,5 +179,45 @@ def visualize_graph_with_dot(graph, file_path=None):
         plt.savefig(file_path)
         plt.close()
         print(f"Граф збережено у {file_path}")
+    else:
+        plt.show()
+
+
+def visualize_distribution(node_distribution, edge_distribution, file_path=None):
+    """
+    Візуалізує розподіл кількості вузлів та зв'язків у графах.
+
+    :param node_distribution: Розподіл кількості вузлів.
+    :param edge_distribution: Розподіл кількості зв'язків.
+    """
+    plt.figure(figsize=(22, 12))
+
+    # Розподіл кількості вузлів
+    plt.plot(
+        sorted(node_distribution.keys()),
+        [node_distribution[k] for k in sorted(node_distribution.keys())],
+        label='Node Count Distribution',
+        linestyle='-',
+        color='blue'
+    )
+
+    # Розподіл кількості зв'язків
+    plt.plot(
+        sorted(edge_distribution.keys()),
+        [edge_distribution[k] for k in sorted(edge_distribution.keys())],
+        label='Edge Count Distribution',
+        linestyle='--',
+        color='green'
+    )
+
+    plt.xlabel('Count')
+    plt.ylabel('Number of Graphs')
+    plt.title('Node and Edge Count Distributions')
+    plt.legend()
+    plt.grid(True)
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік розподілення збережено у {file_path}")
     else:
         plt.show()

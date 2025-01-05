@@ -2,8 +2,8 @@ import pandas as pd
 from src.utils.logger import get_logger
 from src.utils.file_utils import load_register, save_register, load_graph, save_graph
 from src.utils.file_utils_l import join_path
-
-from src.config.config import  NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH, NORMAL_GRAPH_PATH, ANOMALOUS_GRAPH_PATH
+from src.utils.visualizer import visualize_distribution
+from src.config.config import  NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH, NORMAL_GRAPH_PATH, ANOMALOUS_GRAPH_PATH, PROCESSED_DATA_PATH
 import numpy as np
 import networkx as nx
 from collections import defaultdict, Counter
@@ -11,7 +11,7 @@ from collections import defaultdict, Counter
 logger = get_logger(__name__)
 
 
-def normalize_all_graphs():
+def normalize_all_graphs(min_nodes, min_edges):
     """
     Нормалізує всі графи (нормальні та аномальні) і створює нові реєстри.
     """
@@ -30,14 +30,32 @@ def normalize_all_graphs():
     # Розрахунок статистики для нормалізації
     all_paths = [join_path([NORMAL_GRAPH_PATH, file_name]) for file_name in normal_file_names] + \
                 [join_path([ANOMALOUS_GRAPH_PATH, file_name]) for file_name in anomalous_file_names]
-    stats = calculate_global_statistics(all_paths)
+    stats = calculate_global_statistics(all_paths, min_nodes, min_edges)
+    print(f"Статистика по вузлах: {stats['node_count']}")
+    print(f"Статистика по звя'зках: {stats['edge_count']}")
+
 
     normalized_normal_graphs = []
     normalized_anomalous_graphs = []
 
+    total_graphs = len(normal_graphs)
+    prev_progress_percent = 0
+
     # Нормалізація та збереження нормальних графів
-    for _, row in normal_graphs.iterrows():
+    for idx, (_, row) in enumerate(normal_graphs.iterrows(), start=1):
         graph = load_graph(join_path([NORMAL_GRAPH_PATH, row["graph_path"]]))
+
+        # Оновлення прогресу
+        progress_percent = (idx / total_graphs) * 100
+        if progress_percent - prev_progress_percent >= 1:
+            print(f"Нормалізовано нормальних графів: {idx}/{total_graphs} ({progress_percent:.2f}%)")
+            prev_progress_percent = progress_percent
+
+        # Перевірка на мінімальну кількість вузлів та зв'язків
+        if len(graph.nodes) < min_nodes or len(graph.edges) < min_edges:
+            logger.warning(f"Граф {row['graph_path']} пропущено через недостатню кількість вузлів або зв'язків.")
+            continue
+
         normalized = normalize_graph(graph, stats)
         save_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, row["graph_path"]])
         save_graph(normalized, save_path)
@@ -49,12 +67,27 @@ def normalize_all_graphs():
             "root_proc_id": row["root_proc_id"],
             "graph_path": row["graph_path"],
             "date": row["date"],
-            "params": row["params"]
+            "params": row["params"],
+            'doc_info': row["doc_info"]  # Збереження параметрів документа
         })
 
+    total_graphs = len(normal_graphs)
+    prev_progress_percent = 0
     # Нормалізація та збереження аномальних графів
     for _, row in anomalous_graphs.iterrows():
         graph = load_graph(join_path([ANOMALOUS_GRAPH_PATH, row["graph_path"]]))
+
+        # Оновлення прогресу
+        progress_percent = (idx / total_graphs) * 100
+        if progress_percent - prev_progress_percent >= 1:
+            print(f"Нормалізовано нормальних графів: {idx}/{total_graphs} ({progress_percent:.2f}%)")
+            prev_progress_percent = progress_percent
+
+        # Перевірка на мінімальну кількість вузлів та зв'язків
+        if len(graph.nodes) < min_nodes or len(graph.edges) < min_edges:
+            logger.warning(f"Граф {row['graph_path']} пропущено через недостатню кількість вузлів або зв'язків.")
+            continue
+
         normalized = normalize_graph(graph, stats)
         save_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, row["graph_path"]])
         save_graph(normalized, save_path)
@@ -66,7 +99,8 @@ def normalize_all_graphs():
             "root_proc_id": row["root_proc_id"],
             "graph_path": row["graph_path"],
             "date": row["date"],
-            "params": row["params"]
+            "params": row["params"],
+            'doc_info': row["doc_info"]  # Збереження параметрів документа
         })
 
         # Збереження оновлених реєстрів
@@ -76,9 +110,12 @@ def normalize_all_graphs():
     logger.info("Нормалізація графів завершена.")
 
 
-def calculate_global_statistics(graph_paths):
+from collections import defaultdict
+import numpy as np
+
+def calculate_global_statistics(graph_paths, min_nodes=6, min_edges=6):
     """
-    Розраховує глобальні статистики для нормалізації атрибутів графів.
+    Розраховує глобальні статистики для нормалізації атрибутів графів, включаючи кількість вузлів та зв'язків.
 
     :param graph_paths: Список шляхів до графів.
     :return: Словник статистик для нормалізації.
@@ -86,13 +123,44 @@ def calculate_global_statistics(graph_paths):
     stats = {
         "numeric": defaultdict(list),
         "text": defaultdict(set),
-        "date": defaultdict(list)
+        "date": defaultdict(list),
+        "node_count": [],
+        "edge_count": []
     }
+    node_distribution = defaultdict(int)
+    edge_distribution = defaultdict(int)
 
-    for graph_path in graph_paths:
+    total_graphs = len(graph_paths)
+    prev_progress_percent = 0
+
+    for idx, graph_path in enumerate(graph_paths, start=1):
         graph = load_graph(graph_path)
 
+        # Оновлення прогресу
+        progress_percent = (idx / total_graphs) * 100
+        if progress_percent - prev_progress_percent >= 1:
+            print(f"Зібрано статистику з {idx}/{total_graphs} ({progress_percent:.2f}%)")
+            prev_progress_percent = progress_percent
+
+        # Перевірка на мінімальну кількість вузлів та зв'язків
+        if len(graph.nodes) < min_nodes or len(graph.edges) < min_edges:
+            logger.warning(f"Граф {graph_path} пропущено через недостатню кількість вузлів або зв'язків.")
+            continue
+
+        # Додаємо статистику по кількості вузлів та зв'язків
+        node_count = len(graph.nodes)
+        edge_count = len(graph.edges)
+        stats["node_count"].append(node_count)
+        stats["edge_count"].append(edge_count)
+
+        # Оновлення розподілу вузлів і зв'язків
+        node_distribution[node_count] += 1
+        edge_distribution[edge_count] += 1
+
+        # Збір статистики по атрибутах вузлів
         for node, data in graph.nodes(data=True):
+
+
             for attr, value in data.items():
                 if isinstance(value, (int, float)):
                     stats["numeric"][attr].append(float(value))
@@ -104,6 +172,7 @@ def calculate_global_statistics(graph_paths):
                     except ValueError:
                         continue
 
+        # Збір статистики по атрибутах зв'язків
         for _, _, data in graph.edges(data=True):
             for attr, value in data.items():
                 if isinstance(value, (int, float)):
@@ -142,11 +211,31 @@ def calculate_global_statistics(graph_paths):
         for attr, values in stats["date"].items() if values
     }
 
+    # Статистика по кількості вузлів та зв'язків
+    node_count_stats = {
+        "min": np.min(stats["node_count"]),
+        "max": np.max(stats["node_count"]),
+        "mean": np.mean(stats["node_count"]),
+        "std": np.std(stats["node_count"])
+    }
+
+    edge_count_stats = {
+        "min": np.min(stats["edge_count"]),
+        "max": np.max(stats["edge_count"]),
+        "mean": np.mean(stats["edge_count"]),
+        "std": np.std(stats["edge_count"])
+    }
+    diagr_path = join_path([PROCESSED_DATA_PATH, f'graph_statistics_'])
+    visualize_distribution(node_distribution, edge_distribution, diagr_path)
+
     return {
         "numeric": numeric_stats,
         "text": text_stats,
-        "date": date_stats
+        "date": date_stats,
+        "node_count": node_count_stats,
+        "edge_count": edge_count_stats
     }
+
 
 
 def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
