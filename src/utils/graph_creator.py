@@ -182,7 +182,7 @@ def parse_bpmn_and_find_elements(bpmn_model):
         return None
 
 
-def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_actions, bpm_doc_purch):
+def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_actions):
     """
     Побудова графів для кожної групи (ROOT_PROC_ID) із документів.
     :param grouped_instances_with_bpmn: Словник {doc_id: {root_proc_id: DataFrame}}.
@@ -498,15 +498,3 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         logger.error(f"Помилка побудови графа: {e}")
         logger.error(f"Деталі помилки:\n{traceback.format_exc()}")
         return None
-
-
-
-   #visualize_graph_with_dot(graph)
-  # Замінюємо тип стартових подій підпроцесу
-                   #for start_node in start_nodes:
-                   #    if subprocess_graph.nodes[start_node].get('type') == 'startEvent':
-                   #        subprocess_graph.nodes[start_node]['type'] = 'startEventsp'
-                   #for end_node in end_nodes:
-                   #    if subprocess_graph.nodes[end_node].get('type') == 'endEvent':
-                   #        subprocess_graph.nodes[end_node]['type'] = 'endEventsp'
-                   #

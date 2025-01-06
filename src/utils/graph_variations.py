@@ -235,6 +235,7 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                 logger.info(f"Видалено вузол: {node}")
             anomaly_params["removed_nodes"] = nodes_to_remove
             #visualize_graph_with_dot(modified_graph)
+
         elif anomaly_type == "duplicate_steps":
             # Дублювання випадкових вузлів
             nodes_to_duplicate = random.sample(list(modified_graph.nodes), max(1, len(modified_graph.nodes) // 10))
@@ -324,7 +325,7 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
             # Узгоджені зміни для групи вузлів
             grouped_nodes = random.sample(list(modified_graph.nodes), max(2, len(modified_graph.nodes) // 10))
             for node in grouped_nodes:
-                for attr in ["DURATION_", "SEQUENCE_COUNTER_", "duration_work", "overduet_work", "taskaction_code"]:
+                for attr in ["DURATION_", "DURATION_E", "SEQUENCE_COUNTER_", "duration_work", "duration_work_E", "overduet_work", "taskaction_code"]:
                     if attr in modified_graph.nodes[node]:
                         original_value = modified_graph.nodes[node][attr]
                         try:

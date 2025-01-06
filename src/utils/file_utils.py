@@ -1,10 +1,12 @@
 import pandas as pd
+import numpy as np
 import h5py
 import networkx as nx
 from src.utils.file_utils_l import make_dir, join_path, is_file_exist
 from src.utils.logger import get_logger
 from src.config.config import RAW_PATH, REGISTER_PATH
 import gzip
+import json
 import torch
 from pathlib import Path
 logger = get_logger(__name__)
@@ -232,7 +234,7 @@ def save_prepared_data(data, input_dim, file_path):
     :param file_path: Шлях для збереження файлу.
     """
     torch.save({"data": data, "input_dim": input_dim}, file_path)
-    print(f"Підготовлені дані збережено у {file_path}.")
+    print(f"Підготовлені дані збережено у {file_path}")
 
 def load_prepared_data(file_path):
     """
@@ -241,9 +243,29 @@ def load_prepared_data(file_path):
     :return: data_list, input_dim.
     """
     try:
-        checkpoint = torch.load(file_path)
-        print(f"Підготовлені дані завантажено з {file_path}.")
+        checkpoint = torch.load(f"{file_path}")
+        print(f"Підготовлені дані завантажено з {file_path}")
         return checkpoint["data"], checkpoint["input_dim"]
     except FileNotFoundError:
-        print(f"Файл з підготовленими даними не знайдено: {file_path}.")
+        print(f"Файл з підготовленими даними не знайдено: {file_path}")
         return None, None
+
+def save_statistics_to_json(stats, file_path):
+    """
+    Зберігає статистику в JSON файл.
+
+    :param stats: Статистика для збереження.
+    :param file_path: Шлях до файлу.
+    """
+
+    def convert_to_serializable(obj):
+        if isinstance(obj, (np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    with open(f"{file_path}.json", "w") as f:
+        json.dump(stats, f, indent=4, default=convert_to_serializable)

@@ -60,6 +60,8 @@ def train_model(
         if data_file:  # Спроба завантажити підготовлені дані
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
             data, input_dim = load_prepared_data(data_path)
+        else:
+            data_file = 'prepared_data'
 
         if data is None or input_dim is None:
             logger.info(f"data_list чи input_dim пусті, потрібна підготовка даних...")
@@ -72,7 +74,7 @@ def train_model(
             # Підготовка даних і визначення структури
             data, input_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
             # Збереження підготовлених даних
-            data_file = 'prepared_data'
+
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, data_path)
 
@@ -120,7 +122,6 @@ def train_model(
 
             # Збереження контрольної точки
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
-            # TODO: Додати збереження та відновлення статистики, щоб при продовженні графіки нормально зберігались
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Тестування після кожної епохи

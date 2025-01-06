@@ -239,7 +239,7 @@ def analyze_documents(caption_filter=None):
         right_on='ID_'
     )
     bpm_doc_info = read_from_parquet("bpm_doc_purch")  #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
-    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions, bpm_doc_info)
+    grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions)
 
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
 

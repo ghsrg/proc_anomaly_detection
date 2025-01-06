@@ -31,7 +31,7 @@ def run_learning_mode(args):
         anomaly_type = args.anomaly_type
         action = args.action
         checkpoint_path = args.checkpoint  # GNN_missing_steps_epoch_20
-        data_file = args.data_file  # prepared_data
+        data_file = args.data_file or f"data_{anomaly_type}" # prepared_data
 
         logger.info(f"Запуск режиму навчання для моделі {model_type} з аномалією {anomaly_type}.")
 
