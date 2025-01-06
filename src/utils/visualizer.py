@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 from src.utils.logger import get_logger
 from src.utils.graph_utils import clean_graph
 import pandas as pd
+from graphviz import Digraph
+import inspect
+import torch.nn as nn
 
 logger = get_logger(__name__)
 
@@ -221,3 +224,101 @@ def visualize_distribution(node_distribution, edge_distribution, file_path=None)
         print(f"Графік розподілення збережено у {file_path}")
     else:
         plt.show()
+
+
+def generate_model_diagram(model, model_name=" Neural Network"):
+    """
+    Генерує діаграму для заданої моделі, аналізуючи її шари та метод forward.
+
+    :param model: Модель PyTorch для аналізу.
+    :param model_name: Назва моделі для заголовка діаграми.
+    :return: Діаграма у вигляді об'єкта Digraph.
+    """
+    from graphviz import Digraph
+
+    dot = Digraph(format='png', comment='Model Diagram')
+    dot.attr(rankdir='LR', fontsize='12')  # Горизонтальна діаграма
+
+    # Додаємо заголовок
+    dot.attr(label=model_name, labelloc='t', fontsize='20', fontname='Helvetica')
+
+    # Додаємо вузли для компонентів
+    dot.node('Input', 'Input Features (x)', shape='ellipse')
+    dot.node('EdgeIndex', 'Edge Index (edge_index)', shape='ellipse')
+    dot.node('EdgeAttr', 'Edge Attributes (edge_attr)', shape='ellipse')
+    dot.node('Batch', 'Batch Info (batch)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+
+    dot.node('Conv1', 'GATConv (input_dim -> hidden_dim)', shape='box')
+    dot.node('Activation1', 'ReLU Activation', shape='box')
+
+    dot.node('Conv2', 'GATConv (hidden_dim -> hidden_dim)', shape='box')
+    dot.node('GlobalPool', 'Global Mean Pooling', shape='box')
+
+    dot.node('DocFC', 'Linear (doc_dim -> hidden_dim)', shape='box')
+    dot.node('DocActivation', 'ReLU Activation (doc_emb)', shape='box')
+
+    dot.node('Concat', 'Concatenation [x, doc_emb]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim + hidden_dim -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+
+    # Додаємо зв'язки відповідно до forward
+    dot.edges([
+        ('Input', 'Conv1'),
+        ('Conv1', 'Activation1'),
+        ('Activation1', 'Conv2'),
+        ('Conv2', 'GlobalPool'),
+        ('DocFeatures', 'DocFC'),
+        ('DocFC', 'DocActivation'),
+        ('GlobalPool', 'Concat'),
+        ('DocActivation', 'Concat'),
+        ('Concat', 'FC'),
+        ('FC', 'Sigmoid')
+    ])
+
+    return dot
+
+def create_gnn_diagram():
+    """
+    Створює діаграму послідовності перетворень у GNN із використанням Graphviz.
+    """
+    dot = Digraph(format='png', comment='GNN Model Flow')
+
+    # Додаємо вузли для кожного шару
+    dot.node('Input', 'Input Features (x)', shape='ellipse')
+    dot.node('EdgeIndex', 'Edge Index (edge_index)', shape='ellipse')
+    dot.node('EdgeAttr', 'Edge Attributes (edge_attr)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+
+    dot.node('Conv1', 'GATConv (input_dim -> hidden_dim)', shape='box')
+    dot.node('Activation1', 'ReLU Activation', shape='box')
+
+    dot.node('Conv2', 'GATConv (hidden_dim -> hidden_dim)', shape='box')
+    dot.node('GlobalPool', 'Global Mean Pooling', shape='box')
+
+    dot.node('DocFC', 'Linear (doc_dim -> hidden_dim)', shape='box')
+    dot.node('DocActivation', 'ReLU Activation (doc_emb)', shape='box')
+
+    dot.node('Concat', 'Concatenation [x, doc_emb]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim + hidden_dim -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+
+    # Зв'язки між вузлами
+    dot.edge('Input', 'Conv1', label='x')
+    dot.edge('EdgeIndex', 'Conv1', label='edge_index')
+    dot.edge('EdgeAttr', 'Conv1', label='edge_attr')
+    dot.edge('Conv1', 'Activation1', label='hidden_dim')
+    dot.edge('Activation1', 'Conv2', label='hidden_dim')
+    dot.edge('EdgeIndex', 'Conv2', label='edge_index')
+    dot.edge('EdgeAttr', 'Conv2', label='edge_attr')
+    dot.edge('Conv2', 'GlobalPool', label='hidden_dim')
+    dot.edge('GlobalPool', 'Concat', label='x (graph features)')
+
+    dot.edge('DocFeatures', 'DocFC', label='doc_features')
+    dot.edge('DocFC', 'DocActivation', label='hidden_dim')
+    dot.edge('DocActivation', 'Concat', label='doc_emb')
+
+    dot.edge('Concat', 'FC', label='hidden_dim + hidden_dim')
+    dot.edge('FC', 'Sigmoid', label='output_dim')
+
+    return dot

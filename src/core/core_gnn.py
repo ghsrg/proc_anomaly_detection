@@ -12,8 +12,9 @@ from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS
 
 logger = get_logger(__name__)
 
+
 class GNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim):
         """
         Ініціалізація графової нейронної мережі (GNN).
 
@@ -22,28 +23,45 @@ class GNN(nn.Module):
         :param output_dim: Кількість вихідних ознак для вузлів.
         """
         super(GNN, self).__init__()
-        #self.conv1 = GCNConv(input_dim, hidden_dim)  # Перший графовий шар
-        #self.conv2 = GCNConv(hidden_dim, output_dim)  # Другий графовий шар
         self.conv1 = GATConv(input_dim, hidden_dim)  # Перший графовий шар
-        self.conv2 = GATConv(hidden_dim, output_dim)  # Другий графовий шар
-        self.activation = nn.ReLU()  # Функція активації для внутрішніх шарів
+        self.conv2 = GATConv(hidden_dim, hidden_dim)  # Другий графовий шар
+
+        # Шар для обробки doc_features
+        self.doc_fc = nn.Linear(doc_dim, hidden_dim)
+        self.fc = nn.Linear(hidden_dim + hidden_dim, output_dim)
         self.global_pool = global_mean_pool  # Глобальне пулінгування
+
+        self.activation = nn.ReLU()  # Функція активації для внутрішніх шарів
         self.final_activation = nn.Sigmoid()  # Активація для класифікації
 
-    def forward(self, x, edge_index, edge_attr=None, batch=None):
+    def forward(self, x, edge_index, edge_attr=None, batch=None, doc_features=None):
         """
         Прямий прохід через графову нейронну мережу.
 
         :param x: Тензор вузлів (node features).
         :param edge_index: Тензор зв’язків (edges).
+        :param edge_attr: Атрибути зв'язків (необов’язково).
         :param batch: Інформація про пакети (необов’язково).
+        :param doc_features: Ознаки документа (необов’язково).
         :return: Вихідний тензор після проходження через GNN.
         """
-        x = self.activation(self.conv1(x, edge_index, edge_attr))  # Перший графовий шар з активацією
-        x = self.conv2(x, edge_index, edge_attr)  # Другий графовий шар
-        x = self.global_pool(x, batch)  # Глобальне пулінгування для отримання графових ознак
-        x = self.final_activation(x)  # Фінальна активація (Sigmoid)
-        return x
+        x = self.activation(self.conv1(x, edge_index, edge_attr))
+        x = self.conv2(x, edge_index, edge_attr)
+        x = self.global_pool(x, batch)
+
+        # Обробка doc_features
+        if doc_features is not None:
+            doc_emb = self.activation(self.doc_fc(doc_features))
+            # Об'єднання графових ознак з ознаками документа
+            x = torch.cat([x, doc_emb], dim=1)
+        else:
+            # Якщо doc_features відсутні, заповнюємо значення 0
+            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            x = torch.cat([x, doc_emb], dim=1)
+
+        # Лінійне перетворення
+        x = self.fc(x)
+        return self.final_activation(x)
 
 
 def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
@@ -57,6 +75,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     """
     data_list = []
     max_features = 0
+    max_doc_dim = 0
 
     def infer_graph_attributes(graph):
         """
@@ -83,7 +102,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         return list(numeric_attrs), list(global_attrs), list(edge_attrs)
 
-    def transform_graph(graph, label, node_attrs, edge_attrs):
+    def transform_graph(graph, label, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
         """
         Transforms a NetworkX graph into a PyTorch Geometric Data object, використовуючи лише зазначені атрибути.
 
@@ -91,6 +110,8 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         :param label: Label of the graph (0 - normal, 1 - anomalous).
         :param node_attrs: Масив назв атрибутів вузлів, які слід додати до навчання.
         :param edge_attrs: Масив назв атрибутів ребер, які слід додати до навчання.
+        :param doc_info: Інформація про документ.
+        :param selected_doc_attrs: Масив атрибутів документа.
         :return: PyTorch Geometric Data object.
         """
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
@@ -100,7 +121,6 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         if graph.number_of_edges() == 0:
             logger.warning("Граф без зв'язків. Пропущено.")
             return None
-
 
         # **Підготовка вузлових атрибутів**
         node_features = []
@@ -126,11 +146,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         else:
             logger.warning(f"Graph without numeric node attributes detected.")
 
-
         # Підготовка зв'язків (ребер)
         edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
         edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-
 
         # Підготовка атрибутів ребер
         edge_attr = None
@@ -148,7 +166,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         #print(f"edge_attr.shape: {edge_attr.shape}, edge_index.shape: {edge_index.shape}")
         # Якщо edge_attr відсутній або розмір не відповідає кількості зв'язків
         if edge_attr is None or edge_attr.shape[0] != edge_index.shape[1]:
-             edge_attr = torch.zeros((edge_index.shape[1], len(edge_attrs) if edge_attrs else 1), dtype=torch.float)
+            edge_attr = torch.zeros((edge_index.shape[1], len(edge_attrs) if edge_attrs else 1), dtype=torch.float)
 
         # Логування атрибутів ребер
         #print(f"edge_attr: {edge_attr}, shape: {edge_attr.shape if edge_attr is not None else 'None'}")
@@ -171,38 +189,52 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
             raise ValueError(
                 f"edge_attr size {edge_attr.shape[0]} не відповідає кількості зв'язків {edge_index.shape[1]}.")
 
-
-        # **Глобальні атрибути**
-        global_features = []
-        for node, node_data in graph.nodes(data=True):
-            if node_data.get("type") == "startEvent":
-                global_features = [
-                    float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
-                    for attr in graph.graph.get("global_attrs", [])
-                ]
-                break
-
-        global_features = torch.tensor(global_features, dtype=torch.float)
-
-        if torch.isnan(global_features).any():
-            logger.warning(f"Global features contain nan: {global_features}")
+        # Додавання інформації про документ
+        doc_features = transform_doc(doc_info, selected_doc_attrs)
 
         data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_attr,
             y=torch.tensor([label], dtype=torch.float),
-            global_features=global_features
+            doc_features=doc_features
         )
+        print(f"doc_features (raw): {doc_features}")
+        print(f"doc_features.shape: {doc_features.shape}")
 
         return data
 
-    selected_node_attrs = ["type", "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "SEQUENCE_COUNTER_", "overdue_work", "duration_work"]
+    def transform_doc(doc_info, selected_doc_attrs):
+        """
+        Додає до PyTorch Geometric Data об'єкта інформацію про документ.
+
+        :param doc_info: Словник з інформацією про документ.
+        :param selected_doc_attrs: Список атрибутів документа, які слід включити.
+        :return: Тензор з атрибутами документа.
+        """
+        doc_features = []
+        for attr in selected_doc_attrs:
+            value = doc_info.get(attr, 0)  # За замовчуванням 0, якщо атрибут відсутній
+            try:
+                # Перетворення значення в числовий формат
+                doc_features.append(float(value))
+            except (ValueError, TypeError):
+                doc_features.append(0.0)  # Некоректні значення замінюємо на 0.0
+
+        return torch.tensor(doc_features, dtype=torch.float)
+
+    selected_node_attrs = ["type", "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "SEQUENCE_COUNTER_",
+                           "overdue_work", "duration_work"]
     selected_edge_attrs = ["DURATION_", "taskaction_code", "overdue_work"]
+    selected_doc_attrs = ["PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate", "CategoryL1", "CategoryL2",
+                          "CategoryL3", "ClassSSD", "Company_SO"]
     #selected_attrs = ["DURATION_"]
 
+    #Аналізуємо нормальний док
     prev_progress_percent = -1  # Ініціалізуємо попередній прогрес на значення поза діапазоном
-    for idx, graph_file in enumerate(normal_graphs["graph_path"], start=1):
+    for idx, row in normal_graphs.iterrows():
+        graph_file = row["graph_path"]
+        doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
 
@@ -218,7 +250,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 0, selected_node_attrs, selected_edge_attrs)
+        data = transform_graph(graph, 0, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
         if data is None:
             logger.info(f"Пропускаємо нормальний граф {graph_file} відсутні зв'язки")
             continue
@@ -226,9 +258,14 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
             data_list.append(data)
         else:
             logger.info(f"Пропускаємо нормальний граф {graph_file} кількість зв'язків {data.edge_index.size(1)}")
+        max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
+    # Аналізуємо аномальний док
     prev_progress_percent = -1  # Ініціалізуємо попередній прогрес на значення поза діапазоном
-    for idx, graph_file in enumerate(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"], start=1):
+    #for idx, graph_file in enumerate(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"], start=1):
+    for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+        graph_file = row["graph_path"]
+        doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])
         graph = load_graph(full_path)
 
@@ -245,7 +282,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        data = transform_graph(graph, 1, selected_node_attrs, selected_edge_attrs)
+        data = transform_graph(graph, 1, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
         if data is None:
             logger.info(f"Пропускаємо аномальний граф {graph_file} відсутні зв'язки")
             continue
@@ -260,9 +297,8 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
             data_list.append(data)
         else:
             logger.info(f"Пропускаємо аномальний граф {graph_file} кількість зв'язків {data.edge_index.size(1)}")
-
-    return data_list, max_features
-
+        max_doc_dim = max(max_doc_dim, data.doc_features.numel())
+    return data_list, max_features, max_doc_dim
 
 
 def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
@@ -282,7 +318,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size  # Обчислення кількості пакетів
-    progress_percent=0
+    progress_percent = 0
     for batch_idx in range(num_batches):
         # Обчислення поточного прогресу
         current_iteration = batch_idx + 1
@@ -302,9 +338,14 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
         x = torch.cat([item.x for item in batch], dim=0)
         edge_index = torch.cat([item.edge_index for item in batch], dim=1)
         edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
-
+        #doc_features = torch.cat([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[
+                                                                                        0].doc_features is not None else None
+        print(f"train epoch doc_features.shape: {doc_features.shape}")
         logger.debug(f"edge_index.shape: {edge_index.shape}")
         logger.debug(f"edge_attr.shape: {edge_attr.shape}")
+        logger.debug(f"doc_features.shape: {doc_features.shape}")
+
         if edge_index.shape[1] != edge_attr.shape[0]:
             raise ValueError(f"edge_index.size(1) ({edge_index.shape[1]}) != edge_attr.size(0) ({edge_attr.shape[0]})")
 
@@ -319,7 +360,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
         optimizer.zero_grad()
 
         # Прогноз і обчислення втрат
-        outputs = model(x, edge_index, edge_attr, batch_tensor)  # Передати batch
+        outputs = model(x, edge_index, edge_attr, batch_tensor, doc_features)  # Передати batch
         # print(f"Outputs min: {outputs.min()}, max: {outputs.max()}")
         # print(f"outputs.shape: {outputs.shape}, y.shape: {y.shape}")
         logger.debug(outputs, variable_name=f"outputs {outputs} ", max_lines=10, depth=10)

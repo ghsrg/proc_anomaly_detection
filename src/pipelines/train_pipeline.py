@@ -2,7 +2,7 @@
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import save_training_diagram
+from src.utils.visualizer import save_training_diagram, generate_model_diagram
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data
 import src.core.core_gnn as gnn_core
@@ -59,11 +59,11 @@ def train_model(
         input_dim = None
         if data_file:  # Спроба завантажити підготовлені дані
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
-            data, input_dim = load_prepared_data(data_path)
+            data, input_dim, doc_dim = load_prepared_data(data_path)
         else:
             data_file = 'prepared_data'
 
-        if data is None or input_dim is None:
+        if data is None or input_dim is None or doc_dim is None:
             logger.info(f"data_list чи input_dim пусті, потрібна підготовка даних...")
             # Завантаження реєстрів
             normal_graphs = load_register('normalized_normal_graphs')
@@ -72,17 +72,22 @@ def train_model(
             if normal_graphs.empty or anomalous_graphs.empty:
                 raise ValueError("Реєстри графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
-            data, input_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+            data, input_dim, doc_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+            print(doc_dim)
             # Збереження підготовлених даних
-
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
-            save_prepared_data(data, input_dim, data_path)
+            save_prepared_data(data, input_dim, doc_dim, data_path)
 
         print(f"Визначено input_dim: {input_dim}")
+        print(f"Визначено doc_dim: {doc_dim}")
         logger.info(f"Визначено input_dim: {input_dim}")
+        logger.info(f"Визначено doc_dim: {doc_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
-        model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1)
+        model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
+
+        #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
+        #diagram.render("gnn_model_diagram", view=True)  # Збереження і візуалізація
 
         # Оптимізатор
         optimizer = core_module.create_optimizer(model, learning_rate)
