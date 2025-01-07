@@ -31,7 +31,7 @@ def train_model(
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=24,
+    batch_size=2,
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -88,7 +88,7 @@ def train_model(
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=192, output_dim=1, doc_dim=doc_dim)
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")

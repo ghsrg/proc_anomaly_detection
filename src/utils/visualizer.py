@@ -322,3 +322,48 @@ def create_gnn_diagram():
     dot.edge('FC', 'Sigmoid', label='output_dim')
 
     return dot
+
+def create_cnn_diagram():
+    """
+    Створює діаграму послідовності перетворень у CNN із використанням Graphviz.
+    """
+    from graphviz import Digraph
+
+    dot = Digraph(format='png', comment='CNN Model Flow')
+
+    # Додаємо вузли для кожного шару
+    dot.node('InputNodes', 'Node Features (node_features)', shape='ellipse')
+    dot.node('InputEdges', 'Edge Features (edge_features)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+
+    dot.node('Concat', 'Concatenation [node_features, edge_features]', shape='parallelogram')
+    dot.node('Conv1', 'Conv1D (input_dim -> hidden_dim)', shape='box')
+    dot.node('Activation1', 'ReLU Activation', shape='box')
+
+    dot.node('Conv2', 'Conv1D (hidden_dim -> hidden_dim)', shape='box')
+    dot.node('Pooling', 'Adaptive Avg Pooling', shape='box')
+
+    dot.node('DocFC', 'Linear (doc_dim -> hidden_dim)', shape='box')
+    dot.node('DocActivation', 'ReLU Activation (doc_emb)', shape='box')
+
+    dot.node('ConcatFinal', 'Concatenation [x, doc_emb]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim + hidden_dim -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+
+    # Зв'язки між вузлами
+    dot.edge('InputNodes', 'Concat', label='node_features')
+    dot.edge('InputEdges', 'Concat', label='edge_features')
+    dot.edge('Concat', 'Conv1', label='input_dim')
+    dot.edge('Conv1', 'Activation1', label='hidden_dim')
+    dot.edge('Activation1', 'Conv2', label='hidden_dim')
+    dot.edge('Conv2', 'Pooling', label='hidden_dim')
+    dot.edge('Pooling', 'ConcatFinal', label='x (graph features)')
+
+    dot.edge('DocFeatures', 'DocFC', label='doc_features')
+    dot.edge('DocFC', 'DocActivation', label='hidden_dim')
+    dot.edge('DocActivation', 'ConcatFinal', label='doc_emb')
+
+    dot.edge('ConcatFinal', 'FC', label='hidden_dim + hidden_dim')
+    dot.edge('FC', 'Sigmoid', label='output_dim')
+
+    return dot

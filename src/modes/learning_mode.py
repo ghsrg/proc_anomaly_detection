@@ -31,14 +31,14 @@ def run_learning_mode(args):
         anomaly_type = args.anomaly_type
         action = args.action
         checkpoint_path = args.checkpoint  # GNN_missing_steps_epoch_20
-        data_file = args.data_file or f"data_{anomaly_type}" # prepared_data
+        data_file = args.data_file or f"data_{model_type}_{anomaly_type}" # prepared_data
 
         logger.info(f"Запуск режиму навчання для моделі {model_type} з аномалією {anomaly_type}.")
 
         if action == "start":
             # Почати навчання з початку
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', data_file=data_file, num_epochs=30)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', data_file=data_file, num_epochs=35)
 
         elif action == "resume":
             # Продовжити навчання з контрольної точки
