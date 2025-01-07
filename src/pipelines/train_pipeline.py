@@ -6,7 +6,7 @@ from src.utils.visualizer import save_training_diagram, generate_model_diagram
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data
 import src.core.core_gnn as gnn_core
-#import src.core.core_rnn as rnn_core
+import src.core.core_rnn as rnn_core
 import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer_core
 #import src.core.core_autoencoder as autoencoder_core
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 MODEL_MAP = {
     "GNN": ( gnn_core),
- #   "RNN": ( rnn_core),
+    "RNN": ( rnn_core),
     "CNN": ( cnn_core)
  #   "Transformers": (transformer_core),
  #   "Autoencoder": (autoencoder_core)
@@ -31,7 +31,7 @@ def train_model(
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=2,
+    batch_size=48,
 ):
     """
     Запускає процес навчання для вказаної моделі.
