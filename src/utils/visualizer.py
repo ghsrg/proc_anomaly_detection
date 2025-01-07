@@ -367,3 +367,45 @@ def create_cnn_diagram():
     dot.edge('FC', 'Sigmoid', label='output_dim')
 
     return dot
+
+def create_transformer_diagram():
+    """
+    Створює діаграму послідовності перетворень у Transformer із використанням Graphviz.
+    """
+    from graphviz import Digraph
+
+    dot = Digraph(format='png', comment='Transformer Model Flow')
+
+    # Додаємо вузли для кожного шару
+    dot.node('InputSequence', 'Input Sequence (node + edge features)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+
+    dot.node('PositionalEncoding', 'Positional Encoding', shape='box')
+
+    dot.node('Encoder', 'Transformer Encoder', shape='box')
+    dot.node('Mask', 'Padding Mask', shape='parallelogram')
+
+    dot.node('Pooling', 'Pooling (e.g., Mean Pooling)', shape='box')
+
+    dot.node('DocFC', 'Linear (doc_dim -> hidden_dim)', shape='box')
+    dot.node('DocActivation', 'ReLU Activation (doc_emb)', shape='box')
+
+    dot.node('ConcatFinal', 'Concatenation [sequence_emb, doc_emb]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim + d_model -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'PositionalEncoding', label='sequence')
+    dot.edge('PositionalEncoding', 'Encoder', label='sequence + positions')
+    dot.edge('Mask', 'Encoder', label='mask')
+    dot.edge('Encoder', 'Pooling', label='encoded_sequence')
+    dot.edge('Pooling', 'ConcatFinal', label='sequence_emb')
+
+    dot.edge('DocFeatures', 'DocFC', label='doc_features')
+    dot.edge('DocFC', 'DocActivation', label='hidden_dim')
+    dot.edge('DocActivation', 'ConcatFinal', label='doc_emb')
+
+    dot.edge('ConcatFinal', 'FC', label='hidden_dim + d_model')
+    dot.edge('FC', 'Sigmoid', label='output_dim')
+
+    return dot

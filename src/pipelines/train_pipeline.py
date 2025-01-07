@@ -8,7 +8,7 @@ from src.core.split_data import split_data
 import src.core.core_gnn as gnn_core
 import src.core.core_rnn as rnn_core
 import src.core.core_cnn as cnn_core
-#import src.core.transformer as transformer_core
+import src.core.transformer as transformer
 #import src.core.core_autoencoder as autoencoder_core
 
 
@@ -17,9 +17,10 @@ logger = get_logger(__name__)
 MODEL_MAP = {
     "GNN": ( gnn_core),
     "RNN": ( rnn_core),
-    "CNN": ( cnn_core)
- #   "Transformers": (transformer_core),
+    "CNN": ( cnn_core),
+    "Transformer": (transformer),
  #   "Autoencoder": (autoencoder_core)
+#   "GAT": ( gat),
 }
 
 def train_model(
@@ -88,7 +89,7 @@ def train_model(
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=192, output_dim=1, doc_dim=doc_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
