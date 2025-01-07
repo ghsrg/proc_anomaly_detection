@@ -7,7 +7,7 @@ from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, N
 from src.core.split_data import split_data
 import src.core.core_gnn as gnn_core
 #import src.core.core_rnn as rnn_core
-#import src.core.core_cnn as cnn_core
+import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer_core
 #import src.core.core_autoencoder as autoencoder_core
 
@@ -15,9 +15,9 @@ import src.core.core_gnn as gnn_core
 logger = get_logger(__name__)
 
 MODEL_MAP = {
-    "GNN": ( gnn_core)
+    "GNN": ( gnn_core),
  #   "RNN": ( rnn_core),
- #   "CNN": ( cnn_core),
+    "CNN": ( cnn_core)
  #   "Transformers": (transformer_core),
  #   "Autoencoder": (autoencoder_core)
 }
@@ -84,7 +84,12 @@ def train_model(
         logger.info(f"Визначено doc_dim: {doc_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
-        model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
+        model_class = getattr(core_module, model_type, None)
+        if model_class is None:
+            raise ValueError(f"Невідома модель: {model_type}")
+
+        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
+        #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
         #diagram.render("gnn_model_diagram", view=True)  # Збереження і візуалізація

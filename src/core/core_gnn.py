@@ -18,8 +18,9 @@ class GNN(nn.Module):
         """
         Ініціалізація графової нейронної мережі (GNN).
 
-        :param input_dim: Кількість вхідних ознак для вузлів.
+        :param input_dim: Вхідні ознаки для вузлів.
         :param hidden_dim: Розмір прихованого шару.
+        :param doc_dim: Вхідні ознаки всього документа.
         :param output_dim: Кількість вихідних ознак для вузлів.
         """
         super(GNN, self).__init__()
