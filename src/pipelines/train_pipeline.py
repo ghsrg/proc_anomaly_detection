@@ -1,15 +1,16 @@
 
 from src.utils.logger import get_logger
-from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data
+from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, save_statistics_to_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import save_training_diagram, generate_model_diagram
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data
+from datetime import datetime
 import src.core.core_gnn as gnn_core
 import src.core.core_rnn as rnn_core
 import src.core.core_cnn as cnn_core
 import src.core.transformer as transformer
-#import src.core.core_autoencoder as autoencoder_core
+import src.core.autoencoder as autoencoder
 
 
 logger = get_logger(__name__)
@@ -19,8 +20,12 @@ MODEL_MAP = {
     "RNN": ( rnn_core),
     "CNN": ( cnn_core),
     "Transformer": (transformer),
- #   "Autoencoder": (autoencoder_core)
+    "Autoencoder": (autoencoder)
+
 #   "GAT": ( gat),
+    # "VGAE": (vgae)
+    #"TGN"
+#"CapsNets"
 }
 
 def train_model(
@@ -79,17 +84,25 @@ def train_model(
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
 
-        print(f"Визначено input_dim: {input_dim}")
-        print(f"Визначено doc_dim: {doc_dim}")
+        # Визначення edge_dim із першого елемента даних
+        if "edge_features" in data[0] and data[0]["edge_features"] is not None:
+            edge_dim = data[0]["edge_features"].size(1)  # Розмір другого виміру edge_features
+        else:
+            edge_dim = None  # Якщо зв'язків немає або вони не використовуються
+        #print(f"Визначено input_dim: {input_dim}")
+        #print(f"Визначено doc_dim: {doc_dim}")
+        #print(f"Визначено edge_dim: {edge_dim}")
         logger.info(f"Визначено input_dim: {input_dim}")
         logger.info(f"Визначено doc_dim: {doc_dim}")
+        logger.info(f"Визначено edge_dim: {edge_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
         model_class = getattr(core_module, model_type, None)
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
+
+        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim, edge_dim=edge_dim)
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
@@ -98,7 +111,7 @@ def train_model(
         # Оптимізатор
         optimizer = core_module.create_optimizer(model, learning_rate)
 
-        stats = {"epochs": [], "train_loss": [], "val_precision": [], "val_recall": [], "val_roc_auc": [], "val_f1_score": []}
+        stats = {"epochs": [], "train_loss": [], "val_precision": [], "val_recall": [], "val_roc_auc": [], "val_f1_score": [], "spend_time":[]}
         test_stats = {}
 
         # Завантаження контрольної точки
@@ -111,6 +124,11 @@ def train_model(
 
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio)
+
+        # Фіксація часу початку навчання
+        start_time = datetime.now()
+        print(f"Час початку навчання: {start_time}")
+        logger.info(f"Час початку навчання: {start_time}")
 
         for epoch in range(start_epoch, num_epochs):
             logger.info(f"Епоха {epoch + 1}/{num_epochs}")
@@ -129,6 +147,9 @@ def train_model(
             stats["val_recall"].append(val_stats["recall"])
             stats["val_roc_auc"].append(val_stats.get("roc_auc", None))
             stats["val_f1_score"].append(val_stats.get("f1_score", None))
+            eph_end_time = datetime.now()
+            eph_training_duration = eph_end_time - start_time
+            stats["spend_time"].append(eph_training_duration.total_seconds())
             logger.info(f"Статистика валідації: {val_stats}")
 
             # Збереження контрольної точки
@@ -143,13 +164,28 @@ def train_model(
             save_training_diagram(stats,
                                   f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}.png",
                                   test_stats)
-
+        # Обчислення та вивід часу навчання
+        end_time = datetime.now()
+        training_duration = end_time - start_time
+        print(f"Час завершення навчання: {end_time}")
+        print(f"Тривалість навчання: {training_duration}")
+        logger.info(f"Час завершення навчання: {end_time}")
+        logger.info(f"Тривалість навчання: {training_duration}")
         test_stats = core_module.calculate_statistics(model, test_data)
         # Збереження фінальної статистики з тестуванням
         save_training_diagram(stats,
                               f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}_Final.png",
                               test_stats)
+        stat_path = join_path([LEARN_DIAGRAMS_PATH, f'{model_type}_{anomaly_type}_statistics'])
 
+        stats["epochs"].append('Testing')
+        stats["train_loss"].append('')
+        stats["val_precision"].append(val_stats["precision"])
+        stats["val_recall"].append(val_stats["recall"])
+        stats["val_roc_auc"].append(val_stats["roc_auc"])
+        stats["val_f1_score"].append(val_stats["f1_score"])
+        stats["spend_time"].append('')
+        save2csv(stats, stat_path)
         logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")
 
     except Exception as e:

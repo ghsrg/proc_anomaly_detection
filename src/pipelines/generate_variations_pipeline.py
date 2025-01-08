@@ -70,7 +70,7 @@ def generate_variations(total_count, anomaly_type=None):
                 if anomaly_type:
                     anomalous_graph, params = generate_anomalous_graph(graph, anomaly_type=anomaly_type)
                     save_graph(anomalous_graph, f"{original_id}_{graph_file_name}", variation_path)
-               #     visualize_graph_with_dot(anomalous_graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    visualize_graph_with_dot(anomalous_graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
@@ -83,7 +83,7 @@ def generate_variations(total_count, anomaly_type=None):
                     logger.info(f"Збережено оригінальний аномальний граф {graph_file_name} з типом аномалії {anomaly_type}.")
                 else:
                     save_graph(graph, f"{original_id}_{graph_file_name}", variation_path)
-                #    visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
@@ -105,8 +105,8 @@ def generate_variations(total_count, anomaly_type=None):
 
                     file_name = f"{new_id}_{graph_file_name}"
                     save_graph(generated_graph, file_name, variation_path)
-                    #if anomaly_type:
-                    #    visualize_graph_with_dot(generated_graph, join_path([variation_path, file_name]))
+                    if anomaly_type:
+                        visualize_graph_with_dot(generated_graph, join_path([variation_path, file_name]))
 
                     new_variations.append({
                         'id': new_id,

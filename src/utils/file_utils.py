@@ -269,3 +269,11 @@ def save_statistics_to_json(stats, file_path):
 
     with open(f"{file_path}.json", "w") as f:
         json.dump(stats, f, indent=4, default=convert_to_serializable)
+
+def save2csv(df: pd.DataFrame, file_name: str):
+    """Зберігає реєстр."""
+    if type(df) != 'pd.DataFrame':
+        df = pd.DataFrame(df)
+    reg_data_path =  f"{file_name}.xlsx"
+    df.to_excel(reg_data_path, index=False)
+    logger.info(f"Дані збережено у {reg_data_path}")

@@ -21,7 +21,7 @@ def create_project_structure(base_path):
         "main.py": "if __name__ == '__main__':\n    print('Проєкт успішно запущено!')\n",
         "src/core/data_processing.py": "import pandas as pd\n\n# Завантаження та обробка даних\n",
         "src/core/graph_creator.py": "# Побудова графа для GNN\n",
-        "src/core/core_autoencoder.py": "# Реалізація автоенкодера\n",
+        "src/core/autoencoder.py": "# Реалізація автоенкодера\n",
         "src/core/core_gnn.py": "# Реалізація GNN\n",
         "src/core/clustering.py": "# Кластеризація\n",
         "src/core/retraining.py": "# Перенавчання моделей\n",

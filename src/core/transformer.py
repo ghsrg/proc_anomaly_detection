@@ -12,7 +12,7 @@ from src.utils.file_utils import join_path, load_graph
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
 
 class Transformer(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, num_heads=None, num_layers=2, max_seq_length=1000):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_heads=None, num_layers=2, max_seq_length=1000):
         """
         Ініціалізація Transformer-моделі.
 

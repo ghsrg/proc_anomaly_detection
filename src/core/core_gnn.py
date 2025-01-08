@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class GNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None):
         """
         Ініціалізація графової нейронної мережі (GNN).
 
@@ -200,8 +200,8 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
             y=torch.tensor([label], dtype=torch.float),
             doc_features=doc_features
         )
-        print(f"doc_features (raw): {doc_features}")
-        print(f"doc_features.shape: {doc_features.shape}")
+        #print(f"doc_features (raw): {doc_features}")
+        #print(f"doc_features.shape: {doc_features.shape}")
 
         return data
 
@@ -342,7 +342,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
         #doc_features = torch.cat([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
         doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[
                                                                                         0].doc_features is not None else None
-        print(f"train epoch doc_features.shape: {doc_features.shape}")
+        #print(f"train epoch doc_features.shape: {doc_features.shape}")
         logger.debug(f"edge_index.shape: {edge_index.shape}")
         logger.debug(f"edge_attr.shape: {edge_attr.shape}")
         logger.debug(f"doc_features.shape: {doc_features.shape}")

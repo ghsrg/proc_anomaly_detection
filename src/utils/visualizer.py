@@ -368,6 +368,33 @@ def create_cnn_diagram():
 
     return dot
 
+def create_rnn_diagram():
+    """
+    Створює діаграму послідовності перетворень у RNN із використанням Graphviz.
+    """
+    from graphviz import Digraph
+    dot = Digraph(format='png', comment='RNN Model Flow')
+    # Додаємо вузли для кожного шару
+    dot.node('InputSequence', 'Input Sequence (node + edge features)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+    dot.node('LSTM', 'BiLSTM (input_dim -> hidden_dim * 2)', shape='box')
+    dot.node('MeanPooling', 'Mean Pooling', shape='box')
+    dot.node('DocFC', 'Linear (doc_dim -> hidden_dim)', shape='box')
+    dot.node('DocActivation', 'ReLU Activation (doc_emb)', shape='box')
+    dot.node('ConcatFinal', 'Concatenation [sequence_emb, doc_emb]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim * 3 -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'LSTM', label='sequence')
+    dot.edge('LSTM', 'MeanPooling', label='hidden_dim * 2')
+    dot.edge('MeanPooling', 'ConcatFinal', label='sequence_emb')
+    dot.edge('DocFeatures', 'DocFC', label='doc_features')
+    dot.edge('DocFC', 'DocActivation', label='hidden_dim')
+    dot.edge('DocActivation', 'ConcatFinal', label='doc_emb')
+    dot.edge('ConcatFinal', 'FC', label='hidden_dim * 3')
+    dot.edge('FC', 'Sigmoid', label='output_dim')
+    return dot
+
 def create_transformer_diagram():
     """
     Створює діаграму послідовності перетворень у Transformer із використанням Graphviz.
@@ -406,6 +433,49 @@ def create_transformer_diagram():
     dot.edge('DocActivation', 'ConcatFinal', label='doc_emb')
 
     dot.edge('ConcatFinal', 'FC', label='hidden_dim + d_model')
+    dot.edge('FC', 'Sigmoid', label='output_dim')
+
+    return dot
+
+def create_autoencoder_diagram():
+    """
+    Створює діаграму послідовності перетворень у Autoencoder із використанням Graphviz.
+    """
+    from graphviz import Digraph
+
+    dot = Digraph(format='png', comment='Autoencoder Model Flow')
+
+    # Додаємо вузли для кожного компоненту
+    dot.node('InputSequence', 'Input Sequence (node + edge features)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+
+    dot.node('SequenceEncoder', 'Sequence Encoder (Linear -> ReLU -> Linear)', shape='box')
+    dot.node('SequenceLatent', 'Sequence Latent Space', shape='parallelogram')
+
+    dot.node('SequenceDecoder', 'Sequence Decoder (Linear -> ReLU -> Linear)', shape='box')
+    dot.node('ReconstructedSequence', 'Reconstructed Sequence', shape='ellipse')
+
+    dot.node('DocEncoder', 'Document Encoder (Linear -> ReLU -> Linear)', shape='box')
+    dot.node('DocLatent', 'Document Latent Space', shape='parallelogram')
+
+    dot.node('ConcatFinal', 'Concatenation [sequence_latent, doc_latent]', shape='parallelogram')
+    dot.node('FC', 'Linear (hidden_dim * 2 -> output_dim)', shape='box')
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box')
+
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'SequenceEncoder', label='sequence')
+    dot.edge('SequenceEncoder', 'SequenceLatent', label='hidden_dim')
+    dot.edge('SequenceLatent', 'SequenceDecoder', label='hidden_dim')
+    dot.edge('SequenceDecoder', 'ReconstructedSequence', label='reconstructed_sequence')
+    dot.edge('ReconstructedSequence', 'SequenceLatent', label='loss computation', style='dashed')
+
+    dot.edge('DocFeatures', 'DocEncoder', label='doc_features')
+    dot.edge('DocEncoder', 'DocLatent', label='hidden_dim')
+
+    dot.edge('SequenceLatent', 'ConcatFinal', label='sequence_latent')
+    dot.edge('DocLatent', 'ConcatFinal', label='doc_latent')
+
+    dot.edge('ConcatFinal', 'FC', label='hidden_dim * 2')
     dot.edge('FC', 'Sigmoid', label='output_dim')
 
     return dot

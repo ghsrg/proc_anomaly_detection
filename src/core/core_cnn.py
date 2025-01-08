@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class CNN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None):
         super(CNN, self).__init__()
 
         # Шари для обробки вузлів і зв'язків
