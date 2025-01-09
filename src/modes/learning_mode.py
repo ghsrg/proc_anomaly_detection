@@ -38,7 +38,7 @@ def run_learning_mode(args):
         if action == "start":
             # Почати навчання з початку
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', data_file=data_file, num_epochs=20)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=False, checkpoint='', data_file=data_file)
 
         elif action == "resume":
             # Продовжити навчання з контрольної точки

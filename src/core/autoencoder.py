@@ -7,6 +7,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
+from tqdm import tqdm
 
 class Autoencoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None):
@@ -26,11 +27,15 @@ class Autoencoder(nn.Module):
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU()
         )
 
         # Декодер для вузлів і зв'язків
         self.decoder = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, input_dim)
@@ -39,6 +44,8 @@ class Autoencoder(nn.Module):
         # Енкодер для документних атрибутів
         self.doc_encoder = nn.Sequential(
             nn.Linear(doc_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU()
@@ -141,7 +148,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     input_dim = len(selected_node_attrs) + len(selected_edge_attrs)
     doc_dim = len(selected_doc_attrs)
 
-    for idx, row in normal_graphs.iterrows():
+    #for idx, row in normal_graphs.iterrows():
+    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка нормальних графів", total=len(normal_graphs)):
+
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
@@ -159,7 +168,10 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         }
         data_list.append(data)
 
-    for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    #for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    filtered_anomalous_graphs = anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]
+    for idx, row in tqdm(filtered_anomalous_graphs.iterrows(), desc="Обробка аномальних графів",
+                             total=len(filtered_anomalous_graphs)):
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])
@@ -201,7 +213,9 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     total_loss = 0
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
 
-    for batch_idx in range(num_batches):
+    #for batch_idx in range(num_batches):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=4):
+
         batch = data[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
         max_seq_length = max(item["sequence"].size(0) for item in batch)
@@ -266,4 +280,5 @@ def create_optimizer(model, learning_rate=0.001):
     :param learning_rate: Рівень навчання (learning rate).
     :return: Ініціалізований оптимізатор.
     """
-    return Adam(model.parameters(), lr=learning_rate)
+    #return Adam(model.parameters(), lr=learning_rate)
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)

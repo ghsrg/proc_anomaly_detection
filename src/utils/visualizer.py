@@ -11,8 +11,75 @@ logger = get_logger(__name__)
 
 import matplotlib.pyplot as plt
 
+def save_training_diagram(stats, file_path, test_stats=None, title='Training and Validation Metrics'):
+    """
+    Зберігає графік навчання та валідації, додаючи підписи значень для обраних епох.
 
-def save_training_diagram(stats, file_path, test_stats=None):
+    :param stats: Статистика навчання (словник зі списками по епохах).
+    :param file_path: Шлях для збереження графіка.
+    :param test_stats: Метрики тестових даних (словник).
+    """
+    fig, ax1 = plt.subplots(figsize=(19.2, 10.8))
+
+    # Перша шкала для метрик (Precision, Recall, F1, ROC AUC)
+    metrics = {
+        'Precision': ('val_precision', 'blue'),
+        'Recall': ('val_recall', 'green'),
+        'ROC AUC': ('val_roc_auc', 'red'),
+        'F1-score': ('val_f1_score', 'grey')
+    }
+
+    num_epochs = len(stats['epochs'])
+    step = max(1, num_epochs // 6)  # Крок для підписів
+
+    for label, (key, color) in metrics.items():
+        ax1.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color)
+
+        # Додавання підписів для обраних епох
+        for i, (epoch, value) in enumerate(zip(stats['epochs'], stats[key])):
+            if i % step == 0 or i == num_epochs - 1:
+                ax1.text(epoch, value, f"{value:.4f}", color=color, fontsize=8, ha='right', va='bottom')
+
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.set_xlabel('Epochs')
+    ax1.set_ylabel('Metrics')
+    ax1.legend(loc='upper left')
+
+    # Друга шкала для втрат (Loss)
+    ax2 = ax1.twinx()
+    ax2.plot(stats['epochs'], stats['train_loss'], label='Train Loss', linestyle='-', color='orange')
+
+    # Додавання підписів для втрат
+    for i, (epoch, value) in enumerate(zip(stats['epochs'], stats['train_loss'])):
+        if i % step == 0 or i == num_epochs - 1:
+            ax2.text(epoch, value, f"{value:.4f}", color='orange', fontsize=8, ha='right', va='bottom')
+
+    ax2.set_ylabel('Loss')
+    ax2.legend(loc='upper right')
+
+    # Тестові метрики (якщо є)
+    if test_stats:
+        test_metrics = {
+            'Test Precision': ('precision', 'blue'),
+            'Test Recall': ('recall', 'green'),
+            'Test ROC AUC': ('roc_auc', 'red'),
+            'Test F1-score': ('f1_score', 'grey')
+        }
+        for label, (key, color) in test_metrics.items():
+            if test_stats.get(key) is not None:
+                value = test_stats[key]
+                ax1.axhline(y=value, color=color, linestyle='--', label=label)
+                # Додавання підпису для тестових метрик
+                ax1.text(num_epochs, value, f"{value:.4f}", color=color, fontsize=8, ha='right', va='bottom')
+
+    # Оформлення графіка
+    plt.title(title, fontsize=16, fontweight='bold', loc='center')
+
+    fig.tight_layout()
+    plt.savefig(file_path, dpi=100)
+    plt.close()
+
+def save_training_diagram_old(stats, file_path, test_stats=None):
     """
     Зберігає графік навчання та валідації, додаючи підписи значень для обраних епох.
 

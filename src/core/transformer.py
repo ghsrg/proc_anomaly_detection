@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+from tqdm import tqdm
+
 from src.utils.logger import get_logger
 from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score
 from torch_geometric.data import Data
@@ -78,8 +80,8 @@ class Transformer(nn.Module):
 
         # Класифікація
         output = self.fc(combined)  # [batch_size, output_dim]
-        return self.final_activation(output)
-
+        #return self.final_activation(output)
+        return output
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
@@ -162,7 +164,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     doc_dim = len(selected_doc_attrs)  # Розмірність атрибутів документа
 
     # Обробка нормальних графів
-    for idx, row in normal_graphs.iterrows():
+    #for idx, row in normal_graphs.iterrows():
+    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка нормальних графів", total=len(normal_graphs)):
+
         graph_file = row["graph_path"]  # Шлях до файлу графу
         doc_info = row.get("doc_info", {})  # Інформація про документ
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])  # Повний шлях до графа
@@ -181,7 +185,10 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         data_list.append(data)
 
     # Обробка аномальних графів
-    for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    #for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    filtered_anomalous_graphs = anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]
+    for idx, row in tqdm(filtered_anomalous_graphs.iterrows(), desc="Обробка аномальних графів",
+                         total=len(filtered_anomalous_graphs)):
         graph_file = row["graph_path"]  # Шлях до файлу графу
         doc_info = row.get("doc_info", {})  # Інформація про документ
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])  # Повний шлях до графа
@@ -223,13 +230,19 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     """
     # Перевірка функції втрат
     if loss_fn is None:
-        loss_fn = torch.nn.BCELoss()  # Використання стандартної функції втрат
+        # pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
+        num_normal = sum(1 for item in data if item["label"].item() == 0)
+        num_anomalous = sum(1 for item in data if item["label"].item() == 1)
+        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        # loss_fn = nn.BCELoss()
 
     model.train()
     total_loss = 0
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
 
-    for batch_idx in range(num_batches):
+    #for batch_idx in range(num_batches):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
         # Формування батчу
         batch = data[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
@@ -317,4 +330,5 @@ def calculate_statistics(model, data, batch_size=24):
     return stats
 
 def create_optimizer(model, learning_rate=0.001):
-    return Adam(model.parameters(), lr=learning_rate)
+    #return Adam(model.parameters(), lr=learning_rate)
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)

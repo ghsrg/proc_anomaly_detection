@@ -35,10 +35,13 @@ def train_model(
     resume=False,
     checkpoint=None,
     data_file=None,
-    num_epochs=50,
+    num_epochs=100,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=24,
+    batch_size=64,
+    hidden_dim=64,
+    patience=10,  # Кількість епох без покращення перед зупинкою
+    delta=1e-4  # Мінімальне покращення, яке вважається значущим
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -103,7 +106,7 @@ def train_model(
             raise ValueError(f"Невідома модель: {model_type}")
 
 
-        model = model_class(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=1, doc_dim=doc_dim, edge_dim=edge_dim)
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
@@ -131,6 +134,10 @@ def train_model(
         print(f"Час початку навчання: {start_time}")
         logger.info(f"Час початку навчання: {start_time}")
 
+        # Ініціалізація Early Stopping
+        best_val_loss = float('inf')  # Найкраща валідаційна втрата
+        epochs_no_improve = 0  # Лічильник епох без покращення
+
         #for epoch in range(start_epoch, num_epochs):
         for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох", dynamic_ncols=True):
             logger.info(f"Епоха {epoch + 1}/{num_epochs}")
@@ -154,9 +161,27 @@ def train_model(
             stats["spend_time"].append(eph_training_duration.total_seconds())
             logger.info(f"Статистика валідації: {val_stats}")
 
+            # Перевірка Early Stopping
+            print (epoch,train_loss, best_val_loss - delta)
+            if train_loss < best_val_loss - delta:
+                best_val_loss = train_loss
+                epochs_no_improve = 0
+                # Можна зберігати найкращу модель
+                checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_best.pt"
+                save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
+                                file_path=checkpoint_path, stats=stats)
+            else:
+                epochs_no_improve += 1
+                logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
+
             # Збереження контрольної точки
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
+
+            # Зупинка навчання
+            if epochs_no_improve >= patience and epoch > 30: # якщо оцінка не змінюється і більше 30 епох тоді стоп
+                logger.info(f"Early Stopping: зупинено на епосі {epoch + 1}")
+                break
 
             # Тестування після кожної епохи
             #test_stats = core_module.calculate_statistics(model, test_data)
@@ -165,7 +190,7 @@ def train_model(
             # Збереження статистики та візуалізація після кожної епохи
             save_training_diagram(stats,
                                   f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}.png",
-                                  test_stats)
+                                  test_stats, title=f"{model_type} Training and Validation Metrics {anomaly_type} anomaly")
         # Обчислення та вивід часу навчання
         end_time = datetime.now()
         training_duration = end_time - start_time
@@ -177,15 +202,15 @@ def train_model(
         # Збереження фінальної статистики з тестуванням
         save_training_diagram(stats,
                               f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}_Final.png",
-                              test_stats)
+                              test_stats, title=f"{model_type} Training and Validation Metrics {anomaly_type} anomaly")
         stat_path = join_path([LEARN_DIAGRAMS_PATH, f'{model_type}_{anomaly_type}_statistics'])
 
         stats["epochs"].append('Testing')
         stats["train_loss"].append('')
-        stats["val_precision"].append(val_stats["precision"])
-        stats["val_recall"].append(val_stats["recall"])
-        stats["val_roc_auc"].append(val_stats["roc_auc"])
-        stats["val_f1_score"].append(val_stats["f1_score"])
+        stats["val_precision"].append(test_stats["precision"])
+        stats["val_recall"].append(test_stats["recall"])
+        stats["val_roc_auc"].append(test_stats["roc_auc"])
+        stats["val_f1_score"].append(test_stats["f1_score"])
         stats["spend_time"].append('')
         save2csv(stats, stat_path)
         logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")

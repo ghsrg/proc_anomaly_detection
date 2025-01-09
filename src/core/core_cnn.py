@@ -20,6 +20,9 @@ class CNN(nn.Module):
         # Шари для обробки вузлів і зв'язків
         self.conv1 = nn.Conv1d(in_channels=input_dim * 2, out_channels=hidden_dim, kernel_size=3, padding=1)
         self.conv2 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=3, padding=1)
+
         self.pool = nn.AdaptiveAvgPool1d(1)
 
         # Шар для обробки документних атрибутів
@@ -76,7 +79,9 @@ class CNN(nn.Module):
 
         # Подальша обробка через CNN
         x = self.activation(self.conv1(x))
-        x = self.pool(self.activation(self.conv2(x))).squeeze(2)  # [batch_size, hidden_dim]
+        x = self.activation(self.conv2(x))
+       # x = self.activation(self.conv3(x))
+        x = self.pool(self.activation(self.conv4(x))).squeeze(2)  # [batch_size, hidden_dim]
 
         # Обробка документних атрибутів
         doc_emb = self.activation(self.doc_fc(doc_features))  # [batch_size, hidden_dim]
@@ -84,7 +89,8 @@ class CNN(nn.Module):
         # Об'єднання всіх ознак
         combined = torch.cat([x, doc_emb], dim=1)  # [batch_size, hidden_dim * 2]
         output = self.fc(combined)  # [batch_size, output_dim]
-        return self.final_activation(output)
+        #return self.final_activation(output)
+        return output
 
 
 def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
@@ -200,7 +206,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
     return data_list, input_dim, doc_dim
 
-def train_epoch(model, train_data, optimizer, batch_size):
+def train_epoch(model, train_data, optimizer, batch_size, loss_fn=None):
     """
     Тренування моделі на одному епоху для CNN.
 
@@ -210,13 +216,22 @@ def train_epoch(model, train_data, optimizer, batch_size):
     :param batch_size: Розмір батчу.
     :return: Середня втрата за епоху.
     """
+
+    if loss_fn is None:
+        #pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
+        num_normal = sum(1 for item in train_data if item["label"].item() == 0)
+        num_anomalous = sum(1 for item in train_data if item["label"].item() == 1)
+        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        #loss_fn = nn.BCELoss()
+
     model.train()
     total_loss = 0.0
-    criterion = nn.BCELoss()  # Функція втрат для бінарної класифікації
+    #criterion = nn.BCELoss()  # Функція втрат для бінарної класифікації
 
     # Поділ даних на батчі
     #for i in range(0, len(train_data), batch_size):
-    for i in tqdm(range(0, len(train_data), batch_size), desc="Поділ на батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=5):
+    for i in tqdm(range(0, len(train_data), batch_size), desc="Поділ на батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=4):
 
         batch = train_data[i:i + batch_size]
 
@@ -252,7 +267,7 @@ def train_epoch(model, train_data, optimizer, batch_size):
         outputs = model(node_features_padded, edge_features_padded, doc_features)  # [batch_size, output_dim]
 
         # Розрахунок втрат
-        loss = criterion(outputs, labels)
+        loss = loss_fn(outputs, labels)
         total_loss += loss.item()
 
         # Зворотний прохід і оновлення ваг
@@ -261,8 +276,6 @@ def train_epoch(model, train_data, optimizer, batch_size):
 
     # Повернення середньої втрати за епоху
     return total_loss / len(train_data)
-
-
 
 
 def calculate_statistics(model, data):
@@ -310,4 +323,6 @@ def calculate_statistics(model, data):
 
 
 def create_optimizer(model, learning_rate=0.001):
-    return Adam(model.parameters(), lr=learning_rate)
+    #return Adam(model.parameters(), lr=learning_rate)
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+

@@ -49,6 +49,7 @@ class GNN(nn.Module):
         """
         x = self.activation(self.conv1(x, edge_index, edge_attr))
         x = self.conv2(x, edge_index, edge_attr)
+        x = self.conv2(x, edge_index, edge_attr)
         x = self.global_pool(x, batch)
 
         # Обробка doc_features
@@ -63,7 +64,8 @@ class GNN(nn.Module):
 
         # Лінійне перетворення
         x = self.fc(x)
-        return self.final_activation(x)
+        #return self.final_activation(x)
+        return x
 
 
 def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
@@ -319,15 +321,22 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     :param loss_fn: Функція втрат (опціонально, якщо None, використовується nn.BCELoss).
     :return: Середнє значення втрат за епоху.
     """
+
+
     if loss_fn is None:
-        loss_fn = nn.BCELoss()
+        #pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
+        num_normal = sum(1 for item in data if item["label"].item() == 0)
+        num_anomalous = sum(1 for item in data if item["label"].item() == 1)
+        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        #loss_fn = nn.BCELoss()
 
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size  # Обчислення кількості пакетів
     progress_percent = 0
     #for i in tqdm(range(0, len(train_data), batch_size), desc="Поділ на батчі", unit="батч"):
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=4):
     #for batch_idx in range(num_batches):
         # Обчислення поточного прогресу
         current_iteration = batch_idx + 1
@@ -438,4 +447,6 @@ def create_optimizer(model, learning_rate=0.001):
     :param learning_rate: Рівень навчання (learning rate).
     :return: Ініціалізований оптимізатор.
     """
-    return Adam(model.parameters(), lr=learning_rate)
+    #return Adam(model.parameters(), lr=learning_rate)
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+
