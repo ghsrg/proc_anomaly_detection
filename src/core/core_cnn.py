@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 from torch.nn.functional import relu
 from src.utils.logger import get_logger
 from src.utils.file_utils import join_path, load_graph
-
+from tqdm import tqdm
 from src.utils.logger import get_logger
 from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
@@ -153,7 +153,8 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     doc_dim = len(selected_doc_attrs)  # Розмірність атрибутів документа
 
     # Обробка нормальних графів
-    for idx, row in normal_graphs.iterrows():
+    #for idx, row in normal_graphs.iterrows():
+    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка нормальних графів", total=len(normal_graphs)):
         graph_file = row["graph_path"]  # Шлях до файлу графу
         doc_info = row.get("doc_info", {})  # Інформація про документ
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])  # Повний шлях до графа
@@ -174,7 +175,10 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         data_list.append(data)
 
     # Обробка аномальних графів
-    for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    #for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    filtered_anomalous_graphs = anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]
+    for idx, row in tqdm(filtered_anomalous_graphs.iterrows(), desc="Обробка аномальних графів",
+                         total=len(filtered_anomalous_graphs)):
         graph_file = row["graph_path"]  # Шлях до файлу графу
         doc_info = row.get("doc_info", {})  # Інформація про документ
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])  # Повний шлях до графа
@@ -211,7 +215,9 @@ def train_epoch(model, train_data, optimizer, batch_size):
     criterion = nn.BCELoss()  # Функція втрат для бінарної класифікації
 
     # Поділ даних на батчі
-    for i in range(0, len(train_data), batch_size):
+    #for i in range(0, len(train_data), batch_size):
+    for i in tqdm(range(0, len(train_data), batch_size), desc="Поділ на батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=5):
+
         batch = train_data[i:i + batch_size]
 
         # Формування батчу

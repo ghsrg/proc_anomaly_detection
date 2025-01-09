@@ -6,6 +6,7 @@ from src.utils.visualizer import save_training_diagram, generate_model_diagram
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data
 from datetime import datetime
+from tqdm import tqdm
 import src.core.core_gnn as gnn_core
 import src.core.core_rnn as rnn_core
 import src.core.core_cnn as cnn_core
@@ -37,7 +38,7 @@ def train_model(
     num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=48,
+    batch_size=24,
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -130,9 +131,10 @@ def train_model(
         print(f"Час початку навчання: {start_time}")
         logger.info(f"Час початку навчання: {start_time}")
 
-        for epoch in range(start_epoch, num_epochs):
+        #for epoch in range(start_epoch, num_epochs):
+        for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох", dynamic_ncols=True):
             logger.info(f"Епоха {epoch + 1}/{num_epochs}")
-            print(f"Епоха {epoch + 1}/{num_epochs}")
+            #print(f"Епоха {epoch + 1}/{num_epochs}")
             stats["epochs"].append(epoch + 1)
 
             # Навчання за епоху

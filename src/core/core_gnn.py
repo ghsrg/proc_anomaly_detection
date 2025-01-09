@@ -9,6 +9,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
+from tqdm import tqdm
 
 logger = get_logger(__name__)
 
@@ -233,7 +234,9 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
     #Аналізуємо нормальний док
     prev_progress_percent = -1  # Ініціалізуємо попередній прогрес на значення поза діапазоном
-    for idx, row in normal_graphs.iterrows():
+    #for idx, row in normal_graphs.iterrows():
+    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка нормальних графів", total=len(normal_graphs)):
+
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, graph_file])
@@ -243,7 +246,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
         total_graphs = len(normal_graphs["graph_path"])
         progress_percent = (idx / total_graphs) * 100
         if progress_percent - prev_progress_percent >= 1:
-            print(f"Підготовка нормального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
+            #print(f"Підготовка нормального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
             prev_progress_percent = progress_percent  # Оновлюємо попередній прогрес
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
@@ -264,7 +267,10 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     # Аналізуємо аномальний док
     prev_progress_percent = -1  # Ініціалізуємо попередній прогрес на значення поза діапазоном
     #for idx, graph_file in enumerate(anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]["graph_path"], start=1):
-    for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    #for idx, row in anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)].iterrows():
+    filtered_anomalous_graphs = anomalous_graphs[anomalous_graphs["params"].str.contains(anomaly_type)]
+    for idx, row in tqdm(filtered_anomalous_graphs.iterrows(), desc="Обробка аномальних графів",
+                             total=len(filtered_anomalous_graphs)):
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, graph_file])
@@ -275,7 +281,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
         progress_percent = (idx / total_graphs) * 100
         if progress_percent - prev_progress_percent >= 1:
-            print(f"Підготовка аномального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
+           # print(f"Підготовка аномального графа {idx}/{total_graphs} ({progress_percent:.2f}%)")
             prev_progress_percent = progress_percent  # Оновлюємо попередній прогрес
 
         numeric_attrs, global_attrs, edge_attrs = infer_graph_attributes(graph)
@@ -320,7 +326,9 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size  # Обчислення кількості пакетів
     progress_percent = 0
-    for batch_idx in range(num_batches):
+    #for i in tqdm(range(0, len(train_data), batch_size), desc="Поділ на батчі", unit="батч"):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
+    #for batch_idx in range(num_batches):
         # Обчислення поточного прогресу
         current_iteration = batch_idx + 1
         total_iterations = num_batches
@@ -328,8 +336,8 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
         progress_percent = (current_iteration / total_iterations) * 100
 
         # Вивід поточного прогресу
-        if progress_percent - prev_progress_percent > 1:  # яко прогрез більше ніж 1 %
-            print(f"Ітерація {current_iteration}/{total_iterations} ({progress_percent:.2f}%)")
+        #if progress_percent - prev_progress_percent > 1:  # яко прогрез більше ніж 1 %
+            #print(f"Ітерація {current_iteration}/{total_iterations} ({progress_percent:.2f}%)")
 
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, len(data))

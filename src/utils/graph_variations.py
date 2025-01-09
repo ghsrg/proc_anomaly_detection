@@ -216,9 +216,6 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                - Відсутність обов’язкових дій або недотримання визначеного порядку в процесі.
                - Приклад: Комплаєнс (ігнорування перевірки).
 
-            9. group_anomalies: Групові відхилення
-               - Узгоджена поведінка групи вузлів, яка не відповідає очікуваній (наприклад, одночасні затримки).
-               - Приклад: Кадрові або фінансові процеси
     :param params: Параметри для генерації аномалії.
     :return: Модифікований граф і параметри генерації.
     """
@@ -236,10 +233,8 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
             anomaly_params["removed_nodes"] = nodes_to_remove
             #visualize_graph_with_dot(modified_graph)
 
-        if anomaly_type == "duplicate_steps":
-
+        elif anomaly_type == "duplicate_steps":
             # Дублювання випадкових вузлів
-
             nodes_to_duplicate = random.sample(list(modified_graph.nodes), max(1, len(modified_graph.nodes) // 10))
             for node in nodes_to_duplicate:
                 new_node = f"{node}_duplicate"
@@ -275,10 +270,10 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
         elif anomaly_type == "abnormal_duration":
             # Зміна тривалості на випадкову
             for u, v, data in modified_graph.edges(data=True):
-                if "DURATION_" in data:
-                    original_duration = data["DURATION_"]
-                    data["DURATION_"] = original_duration * random.uniform(0.1, 20.0)
-                    logger.info(f"Змінено тривалість ребра {u} -> {v} з {original_duration} на {data['DURATION_']}")
+                if "DURATION_E" in data:
+                    original_duration = data["DURATION_E"]
+                    data["DURATION_E"] = original_duration * random.uniform(0.1, 200.0)
+                    logger.info(f"Змінено тривалість ребра {u} -> {v} з {original_duration} на {data['DURATION_E']}")
             anomaly_params["abnormal_duration"] = True
 
         elif anomaly_type == "abnormal_frequency":
@@ -293,11 +288,11 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
             # Зміна атрибутів вузлів
             nodes_to_modify = random.sample(list(modified_graph.nodes), max(1, len(modified_graph.nodes) // 10))
             for node in nodes_to_modify:
-                for attr in ["PurchasingBudget", "InitialPrice", "FinalPrice", "active_executions"]:
+                for attr in ["SEQUENCE_COUNTER_", "active_executions"]:
                     if attr in modified_graph.nodes[node]:
                         original_value = modified_graph.nodes[node][attr]
                         try:
-                            modified_graph.nodes[node][attr] = original_value * random.uniform(0.5, 20.0) if isinstance(
+                            modified_graph.nodes[node][attr] = original_value * random.uniform(1, 20.0) if isinstance(
                                 original_value, (int, float)) else random.randint(1, 10)
                             logger.info(
                                 f"Змінено атрибут {attr} вузла {node} з {original_value} на {modified_graph.nodes[node][attr]}")
@@ -323,7 +318,7 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
             # Пропуск обов'язкових вузлів
             mandatory_nodes = [node for node, data in modified_graph.nodes(data=True) if data.get("type") == "userTask"]
             if mandatory_nodes:
-                nodes_to_remove = random.sample(mandatory_nodes, max(1, len(mandatory_nodes) // 2))
+                nodes_to_remove = random.sample(mandatory_nodes, max(1, len(mandatory_nodes) ))
                 for node in nodes_to_remove:
                     predecessors = list(modified_graph.predecessors(node))
                     successors = list(modified_graph.successors(node))
@@ -336,29 +331,8 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                                 logger.info(f"З'єднано {pred} -> {succ} після видалення {node}")
                 anomaly_params["violated_compliance_nodes"] = nodes_to_remove
 
-        elif anomaly_type == "group_anomalies":
-            # Узгоджені зміни для групи вузлів
-            grouped_nodes = random.sample(list(modified_graph.nodes), max(2, len(modified_graph.nodes) // 10))
-            for node in grouped_nodes:
-                for attr in ["DURATION_", "DURATION_E", "SEQUENCE_COUNTER_", "duration_work", "duration_work_E", "overduet_work", "taskaction_code"]:
-                    if attr in modified_graph.nodes[node]:
-                        original_value = modified_graph.nodes[node][attr]
-                        try:
-                            if attr == "taskaction_code":
-                                modified_graph.nodes[node][attr] = ''.join(
-                                    random.choices(string.ascii_letters, k=random.randint(5, 10)))
-                            else:
-                                modified_graph.nodes[node][attr] = original_value * random.uniform(1.5,
-                                                                                                   2.5) if isinstance(
-                                    original_value, (int, float)) else f"anomaly_{attr}"
-                            logger.info(
-                                f"Змінено атрибут {attr} вузла {node} з {original_value} на {modified_graph.nodes[node][attr]}")
-                        except Exception as e:
-                            logger.warning(f"Не вдалося змінити атрибут {attr} вузла {node}: {e}")
-            anomaly_params["group_anomalies"] = grouped_nodes
-
         else:
-            logger.warning(f"Невідомий тип аномалії: {anomaly_type}")
+            logger.warning(f"Невідомий тип аномалії графа: {anomaly_type}")
 
     except Exception as e:
         logger.error(f"Помилка при генерації аномалії: {e}")
@@ -381,3 +355,61 @@ def validate_generated_graph(graph: nx.DiGraph) -> bool:
     except Exception as e:
         logger.error(f"Помилка під час перевірки графа: {e}")
         return False
+
+
+import random
+import string
+from datetime import datetime, timedelta
+
+def create_doc_anomaly(doc_info: dict, anomaly_type: str) -> dict:
+    """
+    Створює аномалію у параметрах документа.
+
+    :param doc_info: Словник з інформацією про документ.
+    :param anomaly_type: Тип аномалії ("random_change", "remove_param", "add_param", "date_shift").
+    :return: Модифікований словник doc_info з аномаліями.
+    """
+    modified_doc = doc_info.copy()
+
+    if anomaly_type == "attribute_anomaly":
+        # Випадкова зміна значення існуючого параметра
+        param_to_change = random.choice(list(modified_doc.keys()))
+        original_value = modified_doc[param_to_change]
+        if isinstance(original_value, str):
+            modified_doc[param_to_change] = ''.join(random.choices(string.ascii_letters, k=random.randint(5, 10)))
+        elif isinstance(original_value, (int, float)):
+            modified_doc[param_to_change] = round(random.uniform(0, 10000), 2)
+        elif isinstance(original_value, datetime):
+            modified_doc[param_to_change] = original_value + timedelta(days=random.randint(-30, 30))
+        else:
+            modified_doc[param_to_change] = ''
+        print(f"Аномалія: Змінено параметр {param_to_change} з {original_value} на {modified_doc[param_to_change]}")
+
+    elif anomaly_type == "incomplete_graph":
+        # Видалення випадкового параметра
+        param_to_remove = random.choice(list(modified_doc.keys()))
+        modified_doc[param_to_remove] = ''
+        print(f"Аномалія: Видалено параметр {param_to_remove}")
+
+    elif anomaly_type == "abnormal_frequency":
+        # Зміщення дат на випадкову кількість днів
+        for key, value in modified_doc.items():
+            print(key, value, type(value))
+            if isinstance(value, str) and "T" in value and "-" in value:
+                try:
+                    date_value = datetime.strptime(value.split("T")[0], "%Y-%m-%d")
+                    shifted_date = date_value + timedelta(days=random.randint(-365, 365))
+                    modified_doc[key] = shifted_date.strftime("%Y-%m-%dT%H:%M:%S")
+                    print(f"Аномалія: Зміщено дату {key} з {value} на {modified_doc[key]}")
+                except ValueError:
+                    continue
+            elif isinstance(value, int) and value > 0:
+                # Якщо значення дати представлене як int (припускаємо, що це має бути додатне число)
+                original_value = value
+                # Змінюємо значення на випадкове в діапазоні від -50% до +100% від початкового
+                delta = int(value * random.uniform(-0.5, 1.0))
+                modified_doc[key] = value + delta
+                print(
+                    f"Аномалія: Змінено дату (int) {key} з {original_value} на {modified_doc[key]} (зміна на {delta})")
+
+    return modified_doc

@@ -5,10 +5,11 @@ from src.utils.logger import get_logger
 from src.utils.file_utils import save_register, load_graph, save_graph, load_register
 from src.utils.file_utils_l import join_path
 from src.config.config import GRAPH_PATH, NORMAL_GRAPH_PATH, ANOMALOUS_GRAPH_PATH
-from src.utils.graph_variations import generate_normal_graph, generate_anomalous_graph
+from src.utils.graph_variations import generate_normal_graph, generate_anomalous_graph, create_doc_anomaly
 from src.utils.graph_utils import clean_graph, format_graph_values, format_doc_values
 from src.utils.visualizer import visualize_graph_with_dot
 import traceback
+from tqdm import tqdm
 
 logger = get_logger(__name__)
 
@@ -39,8 +40,9 @@ def generate_variations(total_count, anomaly_type=None):
         remaining_graphs = total_count  # Загальна кількість графів, яку потрібно згенерувати
         total_cycles = len(graph_register)  # Загальна кількість ітерацій
 
-        for current_cycle, (_, row) in enumerate(graph_register.iterrows(), start=1):
-
+        #for current_cycle, (_, row) in enumerate(graph_register.iterrows(), start=1):
+        for current_cycle, (_, row) in enumerate(
+                tqdm(graph_register.iterrows(), desc="Обробка графів", total=len(graph_register)), start=1):
 
             if remaining_graphs <= 0:
                 break  # Якщо досягли потрібної кількості, виходимо з циклу
@@ -58,8 +60,11 @@ def generate_variations(total_count, anomaly_type=None):
                 # Завантаження оригінального графа
                 orig_graph = load_graph(file_name=graph_file_name, path=GRAPH_PATH)
                 cl_graph = clean_graph(orig_graph)
+                if cl_graph.number_of_nodes() < 5:
+                    continue
                 graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURION_', 'DURATION_E', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'duration_work', 'duration_work_E'], date_attrs=['doc_createdate', 'DateSentSO', 'DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_', 'first_view'], default_numeric=0, default_date='2000-01-01T00:00:00.0' )
-
+                del orig_graph
+                del cl_graph
                 # Розрахунок кількості варіацій для поточного графа
                 variations_for_this_graph = variations_per_graph
                 if current_cycle <= extra_variations:  # Додаткові варіації для перших графів
@@ -70,7 +75,9 @@ def generate_variations(total_count, anomaly_type=None):
                 if anomaly_type:
                     anomalous_graph, params = generate_anomalous_graph(graph, anomaly_type=anomaly_type)
                     save_graph(anomalous_graph, f"{original_id}_{graph_file_name}", variation_path)
-                    visualize_graph_with_dot(anomalous_graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    del anomalous_graph
+                    #visualize_graph_with_dot(anomalous_graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    doc_info = create_doc_anomaly (doc_info, anomaly_type)
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
@@ -83,7 +90,8 @@ def generate_variations(total_count, anomaly_type=None):
                     logger.info(f"Збережено оригінальний аномальний граф {graph_file_name} з типом аномалії {anomaly_type}.")
                 else:
                     save_graph(graph, f"{original_id}_{graph_file_name}", variation_path)
-                    visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    #visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
+                    del graph
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
@@ -100,13 +108,15 @@ def generate_variations(total_count, anomaly_type=None):
                     new_id = str(uuid.uuid4())
                     if anomaly_type:
                         generated_graph, params = generate_anomalous_graph(graph, anomaly_type=anomaly_type)
+                        doc_info = create_doc_anomaly(doc_info, anomaly_type)
                     else:
                         generated_graph, params = generate_normal_graph(graph)
 
                     file_name = f"{new_id}_{graph_file_name}"
                     save_graph(generated_graph, file_name, variation_path)
-                    if anomaly_type:
-                        visualize_graph_with_dot(generated_graph, join_path([variation_path, file_name]))
+                    del generated_graph
+                    #if anomaly_type:
+                        #visualize_graph_with_dot(generated_graph, join_path([variation_path, file_name]))
 
                     new_variations.append({
                         'id': new_id,
