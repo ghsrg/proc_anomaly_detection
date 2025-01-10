@@ -324,10 +324,10 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
 
 
     if loss_fn is None:
-        #pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
-        num_normal = sum(1 for item in data if item["label"].item() == 0)
-        num_anomalous = sum(1 for item in data if item["label"].item() == 1)
-        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
+        #num_normal = sum(1 for item in data if item["label"].item() == 0)
+        #num_anomalous = sum(1 for item in data if item["label"].item() == 1)
+        #pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #loss_fn = nn.BCELoss()
 

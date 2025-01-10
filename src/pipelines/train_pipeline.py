@@ -6,6 +6,7 @@ from src.utils.visualizer import save_training_diagram, visualize_distribution
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
+import torch  # Для роботи з GPU
 from tqdm import tqdm
 import src.core.core_gnn as gnn_core
 import src.core.core_rnn as rnn_core
@@ -15,6 +16,12 @@ import src.core.autoencoder as autoencoder
 
 
 logger = get_logger(__name__)
+
+
+# Визначаємо пристрій (GPU або CPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Використовується пристрій: {device}")
+logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
     "GNN": ( gnn_core),
@@ -68,6 +75,7 @@ def train_model(
         data = None
         input_dim = None
         if data_file:  # Спроба завантажити підготовлені дані
+            #data_path = "/content/drive/MyDrive/prepared_data/data_Transformer_missing_steps.pt"
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
             data, input_dim, doc_dim = load_prepared_data(data_path)
         else:
@@ -88,6 +96,12 @@ def train_model(
             data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
 
+        # Переміщення даних на GPU/CPU
+        for i in range(len(data)):
+            for key, value in data[i].items():
+                if isinstance(value, torch.Tensor):
+                    data[i][key] = value.to(device)
+
         # Визначення edge_dim із першого елемента даних
         if "edge_features" in data[0] and data[0]["edge_features"] is not None:
             edge_dim = data[0]["edge_features"].size(1)  # Розмір другого виміру edge_features
@@ -107,6 +121,7 @@ def train_model(
 
 
         model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=1, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model.to(device)  # Переміщення моделі на GPU
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
         #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
