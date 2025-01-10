@@ -43,6 +43,10 @@ class RNN(nn.Module):
         :param doc_features: Тензор документа [batch_size, doc_dim].
         :return: Класифікація [batch_size, output_dim].
         """
+        device = next(self.parameters()).device
+        sequence = sequence.to(device)
+        doc_features = doc_features.to(device)
+
         # Обробка послідовності через LSTM
         lstm_out, _ = self.lstm(sequence)  # [batch_size, max_seq_length, hidden_dim * 2]
         lstm_out = lstm_out.mean(dim=1)  # Агрегація по довжині послідовності [batch_size, hidden_dim * 2]
@@ -190,9 +194,12 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     # Перевірка функції втрат
     if loss_fn is None:
         #pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
-        num_normal = sum(1 for item in data if item["label"].item() == 0)
-        num_anomalous = sum(1 for item in data if item["label"].item() == 1)
-        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        #num_normal = sum(1 for item in data if item["label"].item() == 0)
+        #num_anomalous = sum(1 for item in data if item["label"].item() == 1)
+        #pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        #pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float).to(next(model.parameters()).device)
+        pos_weight = torch.tensor([15000 / 1600], dtype=torch.float).to(next(model.parameters()).device)
+
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         #loss_fn = nn.BCELoss() # Використання стандартної функції втрат, не завбути вкючити Sigmoid
 
@@ -201,13 +208,14 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
 
     #for batch_idx in range(num_batches):
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=4):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=10):
 
         # Вибір даних для батчу
         batch = data[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
         # Доповнення послідовностей у батчі до однакової довжини
         max_seq_length = max(item["sequence"].size(0) for item in batch)
+
         padded_sequences = torch.stack([
             torch.cat([item["sequence"], torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1))])
             for item in batch

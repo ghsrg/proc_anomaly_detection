@@ -224,56 +224,45 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     return data_list, input_dim, doc_dim
 
 def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
-    """
-    Виконує одну епоху навчання для моделі Transformer.
-
-    :param model: Модель Transformer.
-    :param data: Дані для навчання (список словників).
-    :param optimizer: Оптимізатор.
-    :param batch_size: Розмір батчу.
-    :param loss_fn: Функція втрат.
-    :return: Середнє значення втрат за епоху.
-    """
-    # Перевірка функції втрат
     if loss_fn is None:
-        # pos_weight = torch.tensor([15000 / 1600], dtype=torch.float)
-        num_normal = sum(1 for item in data if item["label"].item() == 0)
-        num_anomalous = sum(1 for item in data if item["label"].item() == 1)
-        pos_weight = torch.tensor([num_normal / num_anomalous], dtype=torch.float)
+        #pos_weight має бути перенесений на пристрій моделі
+        #num_normal = sum(1 for item in data if item["label"].item() == 0)
+        #num_anomalous = sum(1 for item in data if item["label"].item() == 1)
+        pos_weight = torch.tensor([15000 / 1600], dtype=torch.float).to(next(model.parameters()).device)
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        # loss_fn = nn.BCELoss()
 
     model.train()
     total_loss = 0
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
 
-    #for batch_idx in range(num_batches):
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True, mininterval=10):
         # Формування батчу
         batch = data[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
         # Доповнення послідовностей у батчі до однакової довжини
         max_seq_length = max(item["sequence"].size(0) for item in batch)
+        device = next(model.parameters()).device
         padded_sequences = torch.stack([
-            torch.cat([
-                item["sequence"].to(next(model.parameters()).device),
-                torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1),
-                            device=next(model.parameters()).device)
-            ])
+            torch.cat([item["sequence"].to(device),
+                       torch.zeros(max_seq_length - item["sequence"].size(0),
+                                   item["sequence"].size(1), device=device)])
             for item in batch
         ])
 
-        doc_features = torch.stack([item["doc_features"] for item in batch]).to(next(model.parameters()).device)
-        labels = torch.stack([item["label"] for item in batch]).to(next(model.parameters()).device)
+        doc_features = torch.stack([item["doc_features"] for item in batch]).to(device)
+        labels = torch.stack([item["label"] for item in batch]).to(device)
 
         # Маска для послідовності (ігнорування паддінгу)
-        mask = (padded_sequences.sum(dim=2) == 0).to(next(model.parameters()).device)  # [batch_size, max_seq_length]
+        mask = (padded_sequences.sum(dim=2) == 0).to(device)  # [batch_size, max_seq_length]
 
         # Скидання градієнтів
         optimizer.zero_grad()
 
         # Передбачення
         outputs = model(padded_sequences, doc_features, mask=mask)
+
+        # Перевірка, чи всі тензори на одному пристрої
+        assert outputs.device == labels.device, "Outputs and labels are on different devices"
 
         # Обчислення втрат
         loss = loss_fn(outputs, labels)
@@ -288,6 +277,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     # Середнє значення втрат за епоху
     average_loss = total_loss / num_batches
     return average_loss
+
 
 def calculate_statistics(model, data, batch_size=24):
     """
@@ -309,16 +299,21 @@ def calculate_statistics(model, data, batch_size=24):
 
             # Доповнення послідовностей у батчі до однакової довжини
             max_seq_length = max(item["sequence"].size(0) for item in batch)
-            padded_sequences = torch.stack([
-                torch.cat([item["sequence"], torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1))])
-                for item in batch
-            ]).to(next(model.parameters()).device)
+            device = next(model.parameters()).device
 
-            doc_features = torch.stack([item["doc_features"] for item in batch]).to(next(model.parameters()).device)
+            padded_sequences = torch.stack([
+                torch.cat([
+                    item["sequence"].to(device),
+                    torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1), device=device)
+                ])
+                for item in batch
+            ])
+
+            doc_features = torch.stack([item["doc_features"].to(device) for item in batch])
             batch_labels = [item["label"].item() for item in batch]
 
             # Маска для послідовності (ігнорування паддінгу)
-            mask = (padded_sequences.sum(dim=2) == 0).to(next(model.parameters()).device)  # [batch_size, max_seq_length]
+            mask = (padded_sequences.sum(dim=2) == 0).to(device)  # [batch_size, max_seq_length]
 
             # Передбачення моделі
             outputs = model(padded_sequences, doc_features, mask=mask).squeeze().tolist()
@@ -338,6 +333,7 @@ def calculate_statistics(model, data, batch_size=24):
     }
 
     return stats
+
 
 def create_optimizer(model, learning_rate=0.001):
     #return Adam(model.parameters(), lr=learning_rate)
