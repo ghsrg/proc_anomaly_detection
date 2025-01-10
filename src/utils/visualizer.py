@@ -134,7 +134,25 @@ def save_training_diagram_old(stats, file_path, test_stats=None):
     plt.savefig(file_path, dpi=100)
     plt.close()
 
+def visualize_distribution(distribution_data, file_path):
+    """
+    Візуалізує розподіл мінімальних, максимальних і середніх значень для тренувальних втрат.
 
+    :param distribution_data: Словник із даними розподілу (мінімум, максимум, середнє).
+    :param file_path: Шлях для збереження графіка.
+    """
+    plt.figure(figsize=(12, 6))
+
+    for label, values in distribution_data.items():
+        plt.plot(values, label=label)
+
+    plt.xlabel('Fold')
+    plt.ylabel('Values')
+    plt.title('Distribution of Min, Max, and Mean Training Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(file_path, dpi=100)
+    plt.close()
 
 def visualize_graph_with_dot(graph, file_path=None):
     """

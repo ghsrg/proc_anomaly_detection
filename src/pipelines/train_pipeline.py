@@ -2,9 +2,9 @@
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, save_statistics_to_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import save_training_diagram, generate_model_diagram
+from src.utils.visualizer import save_training_diagram, visualize_distribution
 from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
-from src.core.split_data import split_data
+from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
 from tqdm import tqdm
 import src.core.core_gnn as gnn_core
@@ -96,9 +96,9 @@ def train_model(
         #print(f"Визначено input_dim: {input_dim}")
         #print(f"Визначено doc_dim: {doc_dim}")
         #print(f"Визначено edge_dim: {edge_dim}")
-        logger.info(f"Визначено input_dim: {input_dim}")
-        logger.info(f"Визначено doc_dim: {doc_dim}")
-        logger.info(f"Визначено edge_dim: {edge_dim}")
+        #logger.info(f"Визначено input_dim: {input_dim}")
+        #logger.info(f"Визначено doc_dim: {doc_dim}")
+        #logger.info(f"Визначено edge_dim: {edge_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
         model_class = getattr(core_module, model_type, None)
