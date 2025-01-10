@@ -62,6 +62,12 @@ class Transformer(nn.Module):
         :param mask: Маска для послідовності [batch_size, max_seq_length].
         :return: Вихідний результат [batch_size, output_dim].
         """
+
+        device = next(self.parameters()).device
+        sequence = sequence.to(device)
+        doc_features = doc_features.to(device)
+        if mask is not None:
+            mask = mask.to(device)
         # Позиційне кодування
         sequence = self.positional_encoding(sequence)
 
@@ -101,7 +107,7 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         if x.size(2) != self.d_model:
             raise ValueError(f"Розмірність вхідного тензора ({x.size(2)}) не збігається з d_model ({self.d_model}).")
-        return x + self.pe[:, :x.size(1), :]
+        return x + self.pe[:, :x.size(1), :].to(x.device)
 
 
 
@@ -249,9 +255,13 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
         # Доповнення послідовностей у батчі до однакової довжини
         max_seq_length = max(item["sequence"].size(0) for item in batch)
         padded_sequences = torch.stack([
-            torch.cat([item["sequence"], torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1))])
+            torch.cat([
+                item["sequence"].to(next(model.parameters()).device),
+                torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1),
+                            device=next(model.parameters()).device)
+            ])
             for item in batch
-        ]).to(next(model.parameters()).device)
+        ])
 
         doc_features = torch.stack([item["doc_features"] for item in batch]).to(next(model.parameters()).device)
         labels = torch.stack([item["label"] for item in batch]).to(next(model.parameters()).device)
