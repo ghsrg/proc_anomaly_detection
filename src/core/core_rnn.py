@@ -4,7 +4,7 @@ from torch.optim import Adam
 from tqdm import tqdm
 
 from src.utils.logger import get_logger
-from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score
+from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score, calculate_auprc, calculate_adr, calculate_far, calculate_fpr, calculate_fnr
 from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
@@ -245,7 +245,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     return average_loss
 
 
-def calculate_statistics(model, data):
+def calculate_statistics(model, data, threshold=0.5):
     """
     Розраховує статистику моделі після навчання.
 
@@ -255,6 +255,7 @@ def calculate_statistics(model, data):
     """
     model.eval()
     predictions, labels = [], []
+    true_labels, predicted_labels = [], []
 
     with torch.no_grad():
         for item in data:
@@ -265,11 +266,28 @@ def calculate_statistics(model, data):
 
             # Передбачення моделі
             output = model(sequence, doc_features).item()
-
             predictions.append(output)
             labels.append(label)
 
+            # Обчислення передбачених міток
+            probability = torch.sigmoid(torch.tensor(output)).item()
+            #print("probability", probability)
+            predicted_label = 1 if probability > threshold else 0
+            true_labels.append(label)
+            predicted_labels.append(predicted_label)
+
+        # Матриця плутанини
+    confusion_matrix_object = {
+        "true_labels": true_labels,
+        "predicted_labels": predicted_labels,
+    }
+
     # Розрахунок метрик
+    auprc = calculate_auprc(labels, predictions)
+    adr = calculate_adr(labels, predictions)
+    far = calculate_far(labels, predictions)
+    fpr = calculate_fpr(labels, predictions)
+    fnr = calculate_fnr(labels, predictions)
     roc_auc = calculate_roc_auc(labels, predictions)
     precision, recall = calculate_precision_recall(labels, predictions)
     f1_score = calculate_f1_score(labels, predictions)
@@ -278,7 +296,13 @@ def calculate_statistics(model, data):
         "precision": precision,
         "recall": recall,
         "roc_auc": roc_auc,
-        "f1_score": f1_score
+        "f1_score": f1_score,
+        "auprc": auprc,
+        "adr": adr,
+        "far": far,
+        "fpr": fpr,
+        "fnr": fnr,
+        "confusion_matrix": confusion_matrix_object
     }
 
     return stats

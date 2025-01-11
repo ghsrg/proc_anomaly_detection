@@ -232,10 +232,41 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                 logger.info(f"Видалено вузол: {node}")
             anomaly_params["removed_nodes"] = nodes_to_remove
             #visualize_graph_with_dot(modified_graph)
+        elif anomaly_type == "duplicate_steps_":
+            # Видалення випадкових вузлів
+            nodes_to_remove = random.sample(list(modified_graph.nodes), max(1, 2))
+            for node in nodes_to_remove:
+                modified_graph.remove_node(node)
+                logger.info(f"Видалено вузол: {node}")
+            anomaly_params["removed_nodes"] = nodes_to_remove
+            # visualize_graph_with_dot(modified_graph)
 
         elif anomaly_type == "duplicate_steps":
             # Дублювання випадкових вузлів
             nodes_to_duplicate = random.sample(list(modified_graph.nodes), max(1, len(modified_graph.nodes) // 10))
+            for node in nodes_to_duplicate:
+                new_node = f"{node}_duplicate"
+                # Дублювання вузла з його атрибутами
+                modified_graph.add_node(new_node, **modified_graph.nodes[node])
+                # Додавання зв'язків із попередніми вузлами
+                for predecessor in modified_graph.predecessors(node):
+                    modified_graph.add_edge(predecessor, new_node)
+                # Додавання зв'язків із наступними вузлами
+                for successor in modified_graph.successors(node):
+                    modified_graph.add_edge(new_node, successor)
+                # Додаткові зв'язки для переміщення через кілька вузлів вперед-назад
+                current_node = new_node
+                for _ in range(random.randint(3, 8)):
+                    potential_neighbors = list(modified_graph.nodes)
+                    next_node = random.choice(potential_neighbors)
+                    if next_node != current_node and not modified_graph.has_edge(current_node, next_node):
+                        modified_graph.add_edge(current_node, next_node)
+                        current_node = next_node
+                logger.info(f"Додано дубль вузла: {new_node} з збереженням зв'язків.")
+            anomaly_params["duplicated_nodes"] = nodes_to_duplicate
+        elif anomaly_type == "duplicate_steps_":
+            # Дублювання випадкових вузлів
+            nodes_to_duplicate = random.sample(list(modified_graph.nodes), max(1, 2))
             for node in nodes_to_duplicate:
                 new_node = f"{node}_duplicate"
                 # Дублювання вузла з його атрибутами
@@ -266,6 +297,15 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                     modified_graph.add_edge(src, tgt)
                     logger.info(f"Додано помилкове ребро: {src} -> {tgt}")
             anomaly_params["wrong_routes_added"] = True
+        elif anomaly_type == "wrong_route_":
+            # Додавання помилкових залежностей
+            all_nodes = list(modified_graph.nodes)
+            for _ in range(max(1, 3)):
+                src, tgt = random.sample(all_nodes, 2)
+                if not modified_graph.has_edge(src, tgt):
+                    modified_graph.add_edge(src, tgt)
+                    logger.info(f"Додано помилкове ребро: {src} -> {tgt}")
+            anomaly_params["wrong_routes_added"] = True
 
         elif anomaly_type == "abnormal_duration":
             # Зміна тривалості на випадкову
@@ -273,6 +313,14 @@ def generate_anomalous_graph(graph: nx.DiGraph, anomaly_type: str = "default", *
                 if "DURATION_E" in data:
                     original_duration = data["DURATION_E"]
                     data["DURATION_E"] = original_duration * random.uniform(0.1, 200.0)
+                    logger.info(f"Змінено тривалість ребра {u} -> {v} з {original_duration} на {data['DURATION_E']}")
+            anomaly_params["abnormal_duration"] = True
+        elif anomaly_type == "abnormal_duration_":
+            # Зміна тривалості на випадкову
+            for u, v, data in modified_graph.edges(data=True):
+                if "DURATION_E" in data:
+                    original_duration = data["DURATION_E"]
+                    data["DURATION_E"] = original_duration * random.uniform(1.1, 20.0)
                     logger.info(f"Змінено тривалість ребра {u} -> {v} з {original_duration} на {data['DURATION_E']}")
             anomaly_params["abnormal_duration"] = True
 

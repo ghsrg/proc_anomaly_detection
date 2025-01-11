@@ -6,10 +6,11 @@ import pandas as pd
 from graphviz import Digraph
 import inspect
 import torch.nn as nn
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
 
 logger = get_logger(__name__)
 
-import matplotlib.pyplot as plt
 
 def save_training_diagram(stats, file_path, test_stats=None, title='Training and Validation Metrics'):
     """
@@ -23,21 +24,27 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
 
     # Перша шкала для метрик (Precision, Recall, F1, ROC AUC)
     metrics = {
-        'Precision': ('val_precision', 'blue'),
-        'Recall': ('val_recall', 'green'),
-        'ROC AUC': ('val_roc_auc', 'red'),
-        'F1-score': ('val_f1_score', 'grey')
+        'Precision': ('val_precision', 'blue', 1),
+        'Recall': ('val_recall', 'green', 1),
+        'ROC AUC': ('val_roc_auc', 'red', 2),
+        'F1-score': ('val_f1_score', 'grey', 2),
+        'AUPRC': ('val_auprc', 'peru', 2.5),
+        'ADR': ('val_adr', 'lime', 0.5),
+        'FAR': ('val_far', 'plum', 0.5),
+        'FPR': ('val_fpr', 'pink', 0.5),
+        'FNR': ('val_fnr', 'cyan', 0.5)
     }
 
     num_epochs = len(stats['epochs'])
     step = max(1, num_epochs // 6)  # Крок для підписів
 
-    for label, (key, color) in metrics.items():
-        ax1.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color)
+    for label, (key, color, lw) in metrics.items():
+        ax1.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color, linewidth=lw)
 
         # Додавання підписів для обраних епох
         for i, (epoch, value) in enumerate(zip(stats['epochs'], stats[key])):
             if i % step == 0 or i == num_epochs - 1:
+                #print(value, color, key)
                 ax1.text(epoch, value, f"{value:.4f}", color=color, fontsize=8, ha='right', va='bottom')
 
     ax1.set_ylim(-0.05, 1.05)
@@ -47,7 +54,7 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
 
     # Друга шкала для втрат (Loss)
     ax2 = ax1.twinx()
-    ax2.plot(stats['epochs'], stats['train_loss'], label='Train Loss', linestyle='-', color='orange')
+    ax2.plot(stats['epochs'], stats['train_loss'], label='Train Loss', linestyle='-', color='black', linewidth=2)
 
     # Додавання підписів для втрат
     for i, (epoch, value) in enumerate(zip(stats['epochs'], stats['train_loss'])):
@@ -153,6 +160,39 @@ def visualize_distribution(distribution_data, file_path):
     plt.grid(True)
     plt.savefig(file_path, dpi=100)
     plt.close()
+
+
+
+
+
+def plot_confusion_matrix(true_labels, predicted_labels, class_labels, file_path=None, normalize=False):
+    """
+    Візуалізує Confusion Matrix.
+
+    :param true_labels: Справжні мітки (list або numpy array).
+    :param predicted_labels: Передбачені мітки (list або numpy array).
+    :param class_labels: Мітки класів (list).
+    :param file_path: Шлях для збереження графіка (або None для показу).
+    :param normalize: Нормалізація значень (True/False).
+    """
+    cm = confusion_matrix(true_labels, predicted_labels)
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt=".2f" if normalize else "d", cmap="Blues",
+                xticklabels=class_labels, yticklabels=class_labels)
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+    else:
+        plt.show()
+
 
 def visualize_graph_with_dot(graph, file_path=None):
     """
@@ -310,6 +350,33 @@ def visualize_distribution(node_distribution, edge_distribution, file_path=None)
     else:
         plt.show()
 
+def visualize_confusion_matrix(confusion_matrix_object, class_labels, file_path=None):
+    """
+    Візуалізує матрицю плутанини.
+
+    :param confusion_matrix_object: Об'єкт із true_labels і predicted_labels.
+    :param class_labels: Список міток класів.
+    :param file_path: Шлях для збереження матриці плутанини (або None для показу).
+    """
+    true_labels = confusion_matrix_object["true_labels"]
+    predicted_labels = confusion_matrix_object["predicted_labels"]
+
+    #print("true_labels", true_labels)
+    #print("predicted_labels", predicted_labels)
+    cm = confusion_matrix(true_labels, predicted_labels)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_labels, yticklabels=class_labels)
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+    else:
+        plt.show()
 
 def generate_model_diagram(model, model_name=" Neural Network"):
     """

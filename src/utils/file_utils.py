@@ -272,7 +272,16 @@ def save_statistics_to_json(stats, file_path):
 
 def save2csv(df: pd.DataFrame, file_name: str):
     """Зберігає реєстр."""
+    print(df)
     if type(df) != 'pd.DataFrame':
+        # Визначення максимальної довжини списків
+        max_length = max(len(values) for values in df.values())
+
+        # Вирівнювання списків
+        for key, values in df.items():
+            if len(values) < max_length:
+                df[key] = values + [None] * (max_length - len(values))
+
         df = pd.DataFrame(df)
     reg_data_path =  f"{file_name}.xlsx"
     df.to_excel(reg_data_path, index=False)

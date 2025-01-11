@@ -1,7 +1,7 @@
 import pandas as pd
 from src.utils.logger import get_logger
 from src.utils.file_utils import load_register, save_register, load_graph, save_graph, save_statistics_to_json
-from src.utils.file_utils_l import join_path
+from src.utils.file_utils_l import join_path, is_file_exist
 from src.utils.visualizer import visualize_distribution
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH, NORMAL_GRAPH_PATH, \
     ANOMALOUS_GRAPH_PATH, PROCESSED_DATA_PATH
@@ -47,6 +47,9 @@ def normalize_all_graphs(min_nodes, min_edges):
     print(f"Статистика по вузлах: {stats['node_count']}")
     print(f"Статистика по звя'зках: {stats['edge_count']}")
 
+    stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
+    save_statistics_to_json(stats, stat_path)
+
     normalized_normal_graphs = []
     normalized_anomalous_graphs = []
 
@@ -58,8 +61,12 @@ def normalize_all_graphs(min_nodes, min_edges):
     #for idx, (_, row) in enumerate(normal_graphs.iterrows(), start=1):
     for idx, (_, row) in enumerate(tqdm(normal_graphs.iterrows(), desc="Обробка нормальних графів", total=len(normal_graphs)),
                                        start=1):
-
-        graph = load_graph(join_path([NORMAL_GRAPH_PATH, row["graph_path"]]))
+        save_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, row["graph_path"]])
+        if is_file_exist(save_path):
+            print(f"Normalized normal graph {save_path} exists")
+            continue
+        load_path = join_path([NORMAL_GRAPH_PATH, row["graph_path"]])
+        graph = load_graph(load_path)
 
         # Оновлення прогресу
         progress_percent = (idx / total_graphs) * 100
@@ -73,7 +80,7 @@ def normalize_all_graphs(min_nodes, min_edges):
             continue
 
         normalized = normalize_graph(graph, stats)
-        save_path = join_path([NORMALIZED_NORMAL_GRAPH_PATH, row["graph_path"]])
+
         save_graph(normalized, save_path)
         del graph
         del normalized
@@ -101,7 +108,12 @@ def normalize_all_graphs(min_nodes, min_edges):
     #for idx, (_, row) in enumerate(anomalous_graphs.iterrows(), start=1):
     for idx, (_, row) in enumerate(tqdm(anomalous_graphs.iterrows(), desc="Обробка аномальних графів", total=len(anomalous_graphs)),
             start=1):
-        graph = load_graph(join_path([ANOMALOUS_GRAPH_PATH, row["graph_path"]]))
+        save_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, row["graph_path"]])
+        if is_file_exist(save_path):
+            print(f"Normalized anomalous graph {save_path} exists")
+            continue
+        load_path = join_path([ANOMALOUS_GRAPH_PATH, row["graph_path"]])
+        graph = load_graph(load_path)
 
         # Оновлення прогресу
         progress_percent = (idx / total_anormalgraphs) * 100
@@ -116,7 +128,6 @@ def normalize_all_graphs(min_nodes, min_edges):
 
         #  Нормалізуємо граф
         normalized = normalize_graph(graph, stats)
-        save_path = join_path([NORMALIZED_ANOMALOUS_GRAPH_PATH, row["graph_path"]])
         save_graph(normalized, save_path)
         del graph
         del normalized
@@ -297,110 +308,6 @@ def calculate_global_statistics(graph_paths, all_docs_info, min_nodes=6, min_edg
     for key in ["doc_text"]:
         for attr, values in final_stats[key].items():
             final_stats[key][attr]["unique_values"] = sorted(values["unique_values"])
-
-    stat_path = join_path([PROCESSED_DATA_PATH, f'global_statistics'])
-    save_statistics_to_json(final_stats, stat_path)
-
-    end_time = datetime.now()
-    training_duration = end_time - start_time
-    print(f"Час завершення статистики: {end_time}")
-    print(f"Тривалість статистики: {training_duration}")
-
-    return final_stats
-
-def calculate_global_statistics_mem_optimized(graph_paths, all_docs_info, min_nodes=6, min_edges=6):
-    """
-    Розраховує глобальні статистики для нормалізації атрибутів графів, включаючи кількість вузлів та зв'язків.
-
-    :param graph_paths: Список шляхів до графів.
-    :param all_docs_info: Список атрибутів документів у форматі JSON.
-    :param min_edges:  Мінімальна кількість вузлів для графа.
-    :param min_nodes: Мінімальна кількість зв'язків для графа.
-    :return: Словник статистик для нормалізації.
-    """
-    start_time = datetime.now()
-    print(f"Час початку статистики: {start_time}")
-
-    # Ініціалізація фінальних статистик
-    final_stats = {
-        "node_numeric": defaultdict(lambda: {"min": float('inf'), "max": float('-inf')}),
-        "node_text": defaultdict(set),
-        "edge_numeric": defaultdict(lambda: {"min": float('inf'), "max": float('-inf')}),
-        "edge_text": defaultdict(set),
-        "doc_numeric": defaultdict(lambda: {"min": float('inf'), "max": float('-inf')}),
-        "doc_text": defaultdict(set),
-        "node_count": {"min": float('inf'), "max": float('-inf')},
-        "edge_count": {"min": float('inf'), "max": float('-inf')}
-    }
-
-    total_graphs = len(graph_paths)
-    prev_progress_percent = 0
-
-    for idx, graph_path in enumerate(graph_paths, start=1):
-        graph = load_graph(graph_path)
-
-        # Оновлення прогресу
-        progress_percent = (idx / total_graphs) * 100
-        if progress_percent - prev_progress_percent >= 1:
-            print(f"Зібрано статистику з {idx}/{total_graphs} ({progress_percent:.2f}%)")
-            prev_progress_percent = progress_percent
-
-        # Перевірка на мінімальну кількість вузлів та зв'язків
-        if len(graph.nodes) < min_nodes or len(graph.edges) < min_edges:
-            logger.warning(f"Граф {graph_path} пропущено через недостатню кількість вузлів або зв'язків.")
-            del graph
-            gc.collect()
-            continue
-
-        # Оновлення статистик по кількості вузлів та зв'язків
-        node_count = len(graph.nodes)
-        edge_count = len(graph.edges)
-        final_stats["node_count"]["min"] = min(final_stats["node_count"]["min"], node_count)
-        final_stats["node_count"]["max"] = max(final_stats["node_count"]["max"], node_count)
-        final_stats["edge_count"]["min"] = min(final_stats["edge_count"]["min"], edge_count)
-        final_stats["edge_count"]["max"] = max(final_stats["edge_count"]["max"], edge_count)
-
-        # Збір статистики по атрибутах вузлів
-        for node, data in graph.nodes(data=True):
-            for attr, value in data.items():
-                if attr == "TASK_ID_":
-                    continue
-                if isinstance(value, (int, float)):
-                    if not np.isnan(value):
-                        final_stats["node_numeric"][attr]["min"] = min(final_stats["node_numeric"][attr]["min"], value)
-                        final_stats["node_numeric"][attr]["max"] = max(final_stats["node_numeric"][attr]["max"], value)
-                elif isinstance(value, str):
-                    final_stats["node_text"][attr].add(value)
-
-        # Збір статистики по атрибутах зв'язків
-        for _, _, data in graph.edges(data=True):
-            for attr, value in data.items():
-                if attr == "id":
-                    continue
-                if isinstance(value, (int, float)):
-                    if not np.isnan(value):
-                        final_stats["edge_numeric"][attr]["min"] = min(final_stats["edge_numeric"][attr]["min"], value)
-                        final_stats["edge_numeric"][attr]["max"] = max(final_stats["edge_numeric"][attr]["max"], value)
-                elif isinstance(value, str):
-                    final_stats["edge_text"][attr].add(value)
-
-        # Збір статистики по атрибутах документів
-        for doc_info in all_docs_info:
-            for attr, value in doc_info.items():
-                if isinstance(value, (int, float)):
-                    if not np.isnan(value):
-                        final_stats["doc_numeric"][attr]["min"] = min(final_stats["doc_numeric"][attr]["min"], value)
-                        final_stats["doc_numeric"][attr]["max"] = max(final_stats["doc_numeric"][attr]["max"], value)
-                elif isinstance(value, str):
-                    final_stats["doc_text"][attr].add(value)
-
-        del graph
-        gc.collect()
-
-    # Перетворення множин у списки для збереження
-    for key in ["node_text", "edge_text", "doc_text"]:
-        for attr, values in final_stats[key].items():
-            final_stats[key][attr] = sorted(values)
 
     stat_path = join_path([PROCESSED_DATA_PATH, f'global_statistics'])
     save_statistics_to_json(final_stats, stat_path)

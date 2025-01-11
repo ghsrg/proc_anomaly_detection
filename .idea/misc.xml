@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.10 (proc_anomaly_detection)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (proc_anomaly_detection)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="condaenv1" project-jdk-type="Python SDK" />
 </project>
