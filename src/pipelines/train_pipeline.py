@@ -47,7 +47,7 @@ def train_model(
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
     batch_size=64,
-    hidden_dim=64,
+    hidden_dim=32,
     patience=10,  # Кількість епох без покращення перед зупинкою
     delta=1e-4  # Мінімальне покращення, яке вважається значущим
 ):
@@ -216,7 +216,7 @@ def train_model(
                 file_path=confusion_matrix_path
             )
             stat_path = join_path([LEARN_DIAGRAMS_PATH, f'{model_type}_{anomaly_type}_statistics'])
-            save2csv(val_stats, stat_path)
+            save2csv(stats, stat_path)
 
             # Зупинка навчання
             if epochs_no_improve >= patience and epoch > 15:  # якщо оцінка не змінюється і більше Х епох тоді стоп

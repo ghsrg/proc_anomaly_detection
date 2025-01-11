@@ -273,16 +273,21 @@ def save_statistics_to_json(stats, file_path):
 def save2csv(df: pd.DataFrame, file_name: str):
     """Зберігає реєстр."""
     print(df)
-    if type(df) != 'pd.DataFrame':
-        # Визначення максимальної довжини списків
-        max_length = max(len(values) for values in df.values())
+    if not isinstance(df, pd.DataFrame):
+        if isinstance(df, dict) and all(isinstance(v, list) for v in df.values()):
+            # Вирівнювання списків за довжиною
+            max_length = max(len(values) for values in df.values())
+            for key, values in df.items():
+                if len(values) < max_length:
+                    df[key] = values + [None] * (max_length - len(values))
+            df = pd.DataFrame(df)
+        else:
+            logger.error("Непідтримуваний формат даних для збереження.")
+            return
 
-        # Вирівнювання списків
-        for key, values in df.items():
-            if len(values) < max_length:
-                df[key] = values + [None] * (max_length - len(values))
-
-        df = pd.DataFrame(df)
-    reg_data_path =  f"{file_name}.xlsx"
-    df.to_excel(reg_data_path, index=False)
-    logger.info(f"Дані збережено у {reg_data_path}")
+    try:
+        reg_data_path = f"{file_name}.xlsx"
+        df.to_excel(reg_data_path, index=False)
+        logger.info(f"Дані збережено у {reg_data_path}")
+    except Exception as e:
+        logger.error(f"Помилка при збереженні даних: {e}")
