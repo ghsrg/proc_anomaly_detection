@@ -43,11 +43,11 @@ def train_model(
     resume=False,
     checkpoint=None,
     data_file=None,
-    num_epochs=20,
+    num_epochs=30,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=64,
-    hidden_dim=32,
+    batch_size=32,
+    hidden_dim=60,
     patience=10,  # Кількість епох без покращення перед зупинкою
     delta=1e-4  # Мінімальне покращення, яке вважається значущим
 ):
@@ -141,6 +141,7 @@ def train_model(
             if not is_file_exist(checkpoint_path):
                 raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint_path}")
             start_epoch, _, stats = load_checkpoint(checkpoint_path, model, optimizer, stats)
+            start_epoch = start_epoch + 1
 
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio)
@@ -249,14 +250,14 @@ def train_model(
         logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")
 
         # Збереження матриці плутанини
-        class_labels = ["Normal", "Anomalous"]
-        confusion_matrix_path = f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_confusion_matrix.png"
+        #class_labels = ["Normal", "Anomalous"]
+        #confusion_matrix_path = f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_confusion_matrix.png"
         # Візуалізація матриці плутанини
-        visualize_confusion_matrix(
-            confusion_matrix_object=test_stats["confusion_matrix_test"],
-            class_labels=class_labels,
-            file_path=confusion_matrix_path
-        )
+        #visualize_confusion_matrix(
+        #    confusion_matrix_object=test_stats["confusion_matrix_test"],
+        #    class_labels=class_labels,
+        #    file_path=confusion_matrix_path
+        #)
     except Exception as e:
         logger.error(f"Помилка під час навчання моделі: {e}")
         raise

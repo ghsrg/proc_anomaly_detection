@@ -557,7 +557,7 @@ def create_transformer_diagram():
 
     # Додаємо вузли для кожного шару
     dot.node('InputSequence', 'Input Sequence (node + edge features)', shape='ellipse')
-    dot.node('DocFeatures', 'Document Features (doc_features)', shape='ellipse')
+    dot.node('DocFeatures', 'Document Features', shape='ellipse')
 
     dot.node('PositionalEncoding', 'Positional Encoding', shape='box')
 
@@ -631,3 +631,248 @@ def create_autoencoder_diagram():
     dot.edge('FC', 'Sigmoid', label='output_dim')
 
     return dot
+
+from graphviz import Digraph
+
+def create_cnn_diagram_colors():
+    """
+    Створює діаграму з пастельними кольорами для CNN із 4 шарами, з адаптацією для друку.
+    """
+    dot = Digraph(format='png', comment='Compact CNN Model Flow with Pastel Colors')
+
+    # Вхідні дані
+    dot.node('InputNodes', 'Node with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('InputEdges', 'Edge with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('DocFeatures', 'Document Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+
+    # Перетворення графових ознак
+    dot.node('Concat', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0', fontcolor='black')  # Light Grey
+    dot.node('Conv1', 'Conv1D (Layer 1)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Activation1', 'ReLU (Layer 1)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    dot.node('Conv2', 'Conv1D (Layer 2)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Activation2', 'ReLU (Layer 2)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    dot.node('Conv3', 'Conv1D (Layer 3)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Activation3', 'ReLU (Layer 3)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    dot.node('Conv4', 'Conv1D (Layer 4)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Activation4', 'ReLU (Layer 4)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+    dot.node('Pooling', 'Adaptive Avg Pooling', shape='box', style='filled', color='#fce5cd', fontcolor='black')  # Pastel Orange
+
+    # Перетворення текстових ознак
+    dot.node('DocFC', 'Linear (Text Embedding)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('DocActivation', 'ReLU (Text Embedding)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    # Інтеграція ознак
+    dot.node('ConcatFinal', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0', fontcolor='black')  # Light Grey
+    dot.node('FC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3', fontcolor='black')  # Pastel Blue
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box', style='filled', color='#f4cccc', fontcolor='black')  # Pastel Red
+
+    # Зв'язки між вузлами
+    dot.edge('InputNodes', 'Concat',  color='black')
+    dot.edge('InputEdges', 'Concat',  color='black')
+    dot.edge('Concat', 'Conv1', color='black')
+    dot.edge('Conv1', 'Activation1', color='black')
+    dot.edge('Activation1', 'Conv2', color='black')
+    dot.edge('Conv2', 'Activation2', color='black')
+    dot.edge('Activation2', 'Conv3', color='black')
+    dot.edge('Conv3', 'Activation3', color='black')
+    dot.edge('Activation3', 'Conv4', color='black')
+    dot.edge('Conv4', 'Activation4', color='black')
+    dot.edge('Activation4', 'Pooling', color='black')
+    dot.edge('Pooling', 'ConcatFinal', color='black')
+
+    dot.edge('DocFeatures', 'DocFC', color='black')
+    dot.edge('DocFC', 'DocActivation', color='black')
+    dot.edge('DocActivation', 'ConcatFinal', color='black')
+
+    dot.edge('ConcatFinal', 'FC', color='black')
+    dot.edge('FC', 'Sigmoid', color='black')
+
+    return dot
+
+def create_gnn_diagram_colors():
+    """
+    Створює діаграму послідовності перетворень у GNN із використанням пастельних кольорів.
+    """
+    dot = Digraph(format='png', comment='GNN Model Flow with Pastel Colors')
+
+    # Вхідні дані
+    dot.node('Input', 'Node with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('EdgeAttr', 'Edge with Attributes', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('DocFeatures', 'Document Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+
+    # Перетворення графових ознак
+    dot.node('Conv1', 'GATConv (Layer 1)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Activation1', 'ReLU (Layer 1)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    dot.node('Conv2', 'GATConv (Layer 2)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Conv3', 'GATConv (Layer 3)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('GlobalPool', 'Global Mean Pooling', shape='box', style='filled', color='#fce5cd', fontcolor='black')  # Pastel Orange
+
+    # Перетворення текстових ознак
+    dot.node('DocFC', 'Linear (Text Embedding)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('DocActivation', 'ReLU (Text Embedding)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    # Інтеграція ознак
+    dot.node('Concat', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0', fontcolor='black')  # Light Grey
+    dot.node('FC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3', fontcolor='black')  # Pastel Blue
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box', style='filled', color='#f4cccc', fontcolor='black')  # Pastel Red
+
+    # Зв'язки між вузлами
+    dot.edge('Input', 'Conv1',  color='black')
+    dot.edge('EdgeAttr', 'Conv1',  color='black')
+    dot.edge('Conv1', 'Activation1',  color='black')
+    dot.edge('Activation1', 'Conv2', color='black')
+    dot.edge('Conv2', 'Conv3', color='black')
+    dot.edge('Conv3', 'GlobalPool',  color='black')
+    dot.edge('GlobalPool', 'Concat', color='black')
+
+    dot.edge('DocFeatures', 'DocFC',  color='black')
+    dot.edge('DocFC', 'DocActivation',  color='black')
+    dot.edge('DocActivation', 'Concat',  color='black')
+
+    dot.edge('Concat', 'FC',  color='black')
+    dot.edge('FC', 'Sigmoid', color='black')
+
+    return dot
+
+def create_rnn_diagram_colors():
+    """
+    Створює діаграму послідовності перетворень у RNN із використанням пастельних кольорів.
+    """
+    dot = Digraph(format='png', comment='RNN Model Flow with Pastel Colors')
+
+    # Вхідні дані
+    dot.node('InputSequence', 'Sequence: Node with Features + Edge with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('DocFeatures', 'Document Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+
+    # Обробка послідовності
+    dot.node('LSTM', 'BiLSTM', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('MeanPooling', 'Mean Pooling', shape='box', style='filled', color='#fce5cd', fontcolor='black')  # Pastel Orange
+
+    # Обробка документних ознак
+    dot.node('DocFC', 'Linear (Text Embedding)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('DocActivation', 'ReLU (Text Embedding)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    # Інтеграція ознак
+    dot.node('ConcatFinal', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0', fontcolor='black')  # Light Grey
+    dot.node('FC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3', fontcolor='black')  # Pastel Blue
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box', style='filled', color='#f4cccc', fontcolor='black')  # Pastel Red
+
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'LSTM',  color='black')
+    dot.edge('LSTM', 'MeanPooling', color='black')
+    dot.edge('MeanPooling', 'ConcatFinal',  color='black')
+
+    dot.edge('DocFeatures', 'DocFC',  color='black')
+    dot.edge('DocFC', 'DocActivation',  color='black')
+    dot.edge('DocActivation', 'ConcatFinal', color='black')
+
+    dot.edge('ConcatFinal', 'FC', color='black')
+    dot.edge('FC', 'Sigmoid', color='black')
+
+    return dot
+
+def create_transformer_diagram_colors():
+    """
+    Створює діаграму послідовності перетворень у Transformer із 3 шарами та використанням пастельних кольорів.
+    """
+    dot = Digraph(format='png', comment='Transformer Model Flow with 3 Layers and Pastel Colors')
+
+    # Вхідні дані
+    dot.node('InputSequence', 'Sequence: Node with Features + Edge with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+    dot.node('DocFeatures', 'Document Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+
+    # Positional Encoding
+    dot.node('PositionalEncoding', 'Positional Encoding', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+
+    # Transformer Layers
+    dot.node('Encoder1', 'Transformer Encoder (Layer 1)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Encoder2', 'Transformer Encoder (Layer 2)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Encoder3', 'Transformer Encoder (Layer 3)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+
+    # Pooling Layer
+    dot.node('Pooling', 'Pooling (e.g., Mean Pooling)', shape='box', style='filled', color='#fce5cd', fontcolor='black')  # Pastel Orange
+
+    # Обробка документних ознак
+    dot.node('DocFC', 'Linear (Text Embedding)', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('DocActivation', 'ReLU (Text Embedding)', shape='box', style='filled', color='#fff2cc', fontcolor='black')  # Pastel Yellow
+
+    # Інтеграція ознак
+    dot.node('ConcatFinal', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0', fontcolor='black')  # Light Grey
+    dot.node('FC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3', fontcolor='black')  # Pastel Blue
+    dot.node('Sigmoid', 'Sigmoid Activation', shape='box', style='filled', color='#f4cccc', fontcolor='black')  # Pastel Red
+
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'PositionalEncoding', color='black')
+    dot.edge('PositionalEncoding', 'Encoder1', color='black')
+    dot.edge('Encoder1', 'Encoder2', color='black')
+    dot.edge('Encoder2', 'Encoder3', color='black')
+    dot.edge('Encoder3', 'Pooling',  color='black')
+    dot.edge('Pooling', 'ConcatFinal',  color='black')
+
+    dot.edge('DocFeatures', 'DocFC',  color='black')
+    dot.edge('DocFC', 'DocActivation',  color='black')
+    dot.edge('DocActivation', 'ConcatFinal',  color='black')
+
+    dot.edge('ConcatFinal', 'FC',  color='black')
+    dot.edge('FC', 'Sigmoid',  color='black')
+
+    return dot
+
+def create_autoencoder_diagram_colors():
+    """
+    Створює діаграму для Autoencoder із пастельними кольорами та зв'язком Reconstructed Sequence.
+    """
+    dot = Digraph(format='png', comment='Autoencoder Model Flow with Reconstructed Sequence Link')
+
+    # Вхідні дані
+    dot.node('InputSequence', 'Sequence: Node with Features + Edge with Features', shape='ellipse', style='filled', color='#add8e6', fontcolor='black')  # Light Blue
+
+    dot.node('DocFeatures', 'Document Features', shape='ellipse', style='filled', color='#add8e6',
+             fontcolor='black')  # Light Blue
+
+    # Encoder-Decoder Layers
+    dot.node('Encoder', 'Encoder', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('Decoder', 'Decoder', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
+    dot.node('ReconstructedSeq', 'Reconstructed Sequence', shape='ellipse', style='filled', color='#add8e6',
+             fontcolor='black')  # Light Blue
+
+    # Aggregation Layer
+    dot.node('Aggregation', 'Mean Aggregation', shape='box', style='filled', color='#fce5cd',
+             fontcolor='black')  # Pastel Orange
+
+    # Document Encoding
+    dot.node('DocEncoder', 'Document Encoder', shape='box', style='filled', color='#d9ead3',
+             fontcolor='black')  # Pastel Green
+
+    # Latent Space Integration
+    dot.node('ConcatLatent', 'Concatenation', shape='parallelogram', style='filled', color='#f0f0f0',
+             fontcolor='black')  # Light Grey
+
+    # Classification
+    dot.node('FinalFC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3',
+             fontcolor='black')  # Pastel Blue
+    dot.node('Output', 'Classification Output', shape='ellipse', style='filled', color='#f4cccc',
+             fontcolor='black')  # Pastel Red
+
+    # Зв'язки між вузлами
+    dot.edge('InputSequence', 'Encoder',  color='black')
+    dot.edge('Encoder', 'Decoder', color='black')
+    dot.edge('Decoder', 'ReconstructedSeq',  color='black')
+    dot.edge('ReconstructedSeq', 'Aggregation',  color='black')
+    dot.edge('Encoder', 'Aggregation',  color='black')
+    dot.edge('Aggregation', 'ConcatLatent',  color='black')
+
+    dot.edge('DocFeatures', 'DocEncoder',  color='black')
+    dot.edge('DocEncoder', 'ConcatLatent',  color='black')
+
+    dot.edge('ConcatLatent', 'FinalFC',  color='black')
+    dot.edge('FinalFC', 'Output',  color='black')
+
+    return dot
+
+
+

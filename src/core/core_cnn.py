@@ -80,7 +80,7 @@ class CNN(nn.Module):
         # Подальша обробка через CNN
         x = self.activation(self.conv1(x))
         x = self.activation(self.conv2(x))
-       # x = self.activation(self.conv3(x))
+        x = self.activation(self.conv3(x))
         x = self.pool(self.activation(self.conv4(x))).squeeze(2)  # [batch_size, hidden_dim]
 
         # Обробка документних атрибутів

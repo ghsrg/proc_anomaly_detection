@@ -50,6 +50,7 @@ class GNN(nn.Module):
         x = self.activation(self.conv1(x, edge_index, edge_attr))
         x = self.conv2(x, edge_index, edge_attr)
         x = self.conv2(x, edge_index, edge_attr)
+        x = self.conv2(x, edge_index, edge_attr)
         x = self.global_pool(x, batch)
 
         # Обробка doc_features

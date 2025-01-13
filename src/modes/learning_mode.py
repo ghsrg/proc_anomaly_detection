@@ -47,7 +47,7 @@ def run_learning_mode(args):
                 return
 
             logger.info(f"Продовження навчання з контрольної точки: {checkpoint_path}.")
-            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=True, checkpoint=checkpoint_path, data_file=data_file, num_epochs=35)
+            train_model(model_type=model_type, anomaly_type=anomaly_type, resume=True, checkpoint=checkpoint_path, data_file=data_file)
 
         elif action == "retrain":
             # Донавчання моделі

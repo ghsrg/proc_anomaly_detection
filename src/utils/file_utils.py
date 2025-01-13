@@ -204,8 +204,10 @@ def load_checkpoint(file_path, model, optimizer=None, stats=None):
         model.load_state_dict(checkpoint['model_state_dict'])
         if optimizer:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            print("Optimizer завантажено")
         if stats:
             stats = checkpoint.get('stats')
+            print(f"Статиситку завантажено")
 
         epoch = checkpoint.get('epoch', 0)
         loss = checkpoint.get('loss', None)

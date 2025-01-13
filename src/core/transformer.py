@@ -7,7 +7,7 @@ from torch.optim import Adam
 from tqdm import tqdm
 
 from src.utils.logger import get_logger
-from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score
+from src.core.metrics import calculate_precision_recall, calculate_roc_auc, calculate_f1_score, calculate_auprc, calculate_adr, calculate_far, calculate_fpr, calculate_fnr
 from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
@@ -41,6 +41,7 @@ class Transformer(nn.Module):
         # Transformer Encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=input_dim, nhead=num_heads, dim_feedforward=hidden_dim)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers)
+
 
         # Обробка атрибутів документа
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
@@ -279,7 +280,7 @@ def train_epoch(model, data, optimizer, batch_size=24, loss_fn=None):
     return average_loss
 
 
-def calculate_statistics(model, data, batch_size=24):
+def calculate_statistics(model, data, batch_size=24, threshold=0.5):
     """
     Розраховує статистику моделі після навчання.
 
@@ -290,6 +291,7 @@ def calculate_statistics(model, data, batch_size=24):
     """
     model.eval()
     predictions, labels = [], []
+    true_labels, predicted_labels = [], []
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
 
     with torch.no_grad():
@@ -320,7 +322,26 @@ def calculate_statistics(model, data, batch_size=24):
             predictions.extend(outputs)
             labels.extend(batch_labels)
 
+            # Обчислення передбачених міток
+            probability = torch.sigmoid(torch.tensor(outputs)).item()
+            # print("probability", probability)
+            predicted_label = 1 if probability > threshold else 0
+            true_labels.append(labels)
+            predicted_labels.append(predicted_label)
+
+    # Матриця плутанини
+
+    confusion_matrix_object = {
+        "true_labels": true_labels,
+        "predicted_labels": predicted_labels,
+    }
+
     # Розрахунок метрик
+    auprc = calculate_auprc(labels, predictions)
+    adr = calculate_adr(labels, predictions)
+    far = calculate_far(labels, predictions)
+    fpr = calculate_fpr(labels, predictions)
+    fnr = calculate_fnr(labels, predictions)
     roc_auc = calculate_roc_auc(labels, predictions)
     precision, recall = calculate_precision_recall(labels, predictions)
     f1_score = calculate_f1_score(labels, predictions)
@@ -329,9 +350,14 @@ def calculate_statistics(model, data, batch_size=24):
         "precision": precision,
         "recall": recall,
         "roc_auc": roc_auc,
-        "f1_score": f1_score
+        "f1_score": f1_score,
+        "auprc": auprc,
+        "adr": adr,
+        "far": far,
+        "fpr": fpr,
+        "fnr": fnr,
+        "confusion_matrix": confusion_matrix_object
     }
-
     return stats
 
 
