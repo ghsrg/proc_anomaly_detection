@@ -12,6 +12,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import global_mean_pool
 from src.utils.file_utils import join_path, load_graph
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH
+from sklearn.metrics import confusion_matrix
 
 class Transformer(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_heads=None, num_layers=2, max_seq_length=1000):
@@ -284,53 +285,51 @@ def calculate_statistics(model, data, batch_size=24, threshold=0.5):
     """
     Розраховує статистику моделі після навчання.
 
-    :param model: Навчена модель Transformer.
-    :param data: Дані для оцінки (список словників).
+    :param model: Навчена модель.
+    :param data: Дані для оцінки (список об'єктів Data).
     :param batch_size: Розмір батчу.
+    :param threshold: Поріг для визначення класу.
     :return: Словник зі статистикою.
     """
     model.eval()
     predictions, labels = [], []
     true_labels, predicted_labels = [], []
+
     num_batches = len(data) // batch_size + (1 if len(data) % batch_size != 0 else 0)
+    device = next(model.parameters()).device
 
     with torch.no_grad():
         for batch_idx in range(num_batches):
             # Формування батчу
             batch = data[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-            # Доповнення послідовностей у батчі до однакової довжини
+            # Підготовка даних для моделі
             max_seq_length = max(item["sequence"].size(0) for item in batch)
-            device = next(model.parameters()).device
-
             padded_sequences = torch.stack([
-                torch.cat([
-                    item["sequence"].to(device),
-                    torch.zeros(max_seq_length - item["sequence"].size(0), item["sequence"].size(1), device=device)
-                ])
+                torch.cat([item["sequence"], torch.zeros(max_seq_length - item["sequence"].size(0),
+                                                         item["sequence"].size(1))])
                 for item in batch
-            ])
+            ]).to(device)
 
-            doc_features = torch.stack([item["doc_features"].to(device) for item in batch])
+            doc_features = torch.stack([item["doc_features"] for item in batch]).to(device)
             batch_labels = [item["label"].item() for item in batch]
 
-            # Маска для послідовності (ігнорування паддінгу)
-            mask = (padded_sequences.sum(dim=2) == 0).to(device)  # [batch_size, max_seq_length]
+            # Маска для послідовності
+            mask = (padded_sequences.sum(dim=2) == 0).to(device)
 
             # Передбачення моделі
-            outputs = model(padded_sequences, doc_features, mask=mask).squeeze().tolist()
-            predictions.extend(outputs)
+            outputs = model(padded_sequences, doc_features, mask=mask).squeeze(1)
+            probabilities = torch.sigmoid(outputs).tolist()
+
+            predictions.extend(probabilities)
             labels.extend(batch_labels)
 
-            # Обчислення передбачених міток
-            probability = torch.sigmoid(torch.tensor(outputs)).item()
-            # print("probability", probability)
-            predicted_label = 1 if probability > threshold else 0
-            true_labels.append(labels)
-            predicted_labels.append(predicted_label)
+            # Передбачені мітки
+            predicted_batch_labels = [1 if p > threshold else 0 for p in probabilities]
+            true_labels.extend(batch_labels)
+            predicted_labels.extend(predicted_batch_labels)
 
     # Матриця плутанини
-
     confusion_matrix_object = {
         "true_labels": true_labels,
         "predicted_labels": predicted_labels,
@@ -359,6 +358,7 @@ def calculate_statistics(model, data, batch_size=24, threshold=0.5):
         "confusion_matrix": confusion_matrix_object
     }
     return stats
+
 
 
 def create_optimizer(model, learning_rate=0.001):

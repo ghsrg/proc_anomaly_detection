@@ -43,11 +43,11 @@ def train_model(
     resume=False,
     checkpoint=None,
     data_file=None,
-    num_epochs=30,
+    num_epochs=50,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
-    batch_size=32,
-    hidden_dim=60,
+    batch_size=64,
+    hidden_dim=64,
     patience=10,  # Кількість епох без покращення перед зупинкою
     delta=1e-4  # Мінімальне покращення, яке вважається значущим
 ):
