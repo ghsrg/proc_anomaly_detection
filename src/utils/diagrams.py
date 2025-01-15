@@ -4,9 +4,42 @@ import numpy as np
 from src.config.config import REPORTS_PATH
 from src.utils.file_utils_l import join_path
 
-# Example data creation similar to the given structure
+
+def create_diag(data, metric):
+    df = pd.DataFrame(data)
+    types = df['Type'].unique()
+    for anomaly_type in types:
+        subset = df[df['Type'] == anomaly_type]
+        x_labels = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
+        metrics = ['MAX', 'AVG', 'MIN']
+
+        values = {metric: subset[subset['Metric'] == metric][x_labels].values.flatten() for metric in metrics}
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(x_labels, values['AVG'], marker='o', label='Average', color='blue')
+        plt.fill_between(x_labels, values['MIN'], values['MAX'], color='gray', alpha=0.3, label='Min-Max Range')
+
+        plt.title(f'{metric} for {anomaly_type}')
+        plt.xlabel('Model Architecture')
+        plt.ylabel(metric)
+        plt.ylim(0.6, 1.05)
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+
+        file_name = join_path([REPORTS_PATH, f"Diagram_{metric}_{anomaly_type}.png"])
+        print(file_name)
+        # Спроба зберегти графік
+        try:
+            plt.savefig(file_name, dpi=100)
+            print(f"Збережено: {file_name}")
+        except Exception as e:
+            print(f"Помилка при збереженні файлу: {e}")
+        # plt.show()
+
+
+metric= 'Precision'
 data = {
-    "Type": ["missing_steps"] * 3 + ["duplicate_steps"] * 3 + ["wrong_route"] * 3 + ["abnormal_duration"] * 3,
+    "Type": ["Missing_Steps"] * 3 + ["Duplicate_Steps"] * 3 + ["Wrong_Route"] * 3 + ["Abnormal_Duration"] * 3,
     "Metric": ["MAX", "AVG", "MIN"] * 4,
     "GNN": [0.829199789, 0.814285714, 0.798559254, 0.836552503, 0.826704545, 0.819659189,
             0.828860645, 0.814345992, 0.809772319, 0.81021139, 0.798793103, 0.785974685],
@@ -14,183 +47,71 @@ data = {
             0.788898024, 0.779591837, 0.738178711, 0.799930165, 0.783464567, 0.752602118],
     "RNN": [0.839133795, 0.790933063, 0.763855624, 0.786836793, 0.780684105, 0.761559228,
             0.831047848, 0.800403226, 0.778199988, 0.811876947, 0.805084746, 0.790356824],
-    "Transformers": [0.812681229, 0.804928131, 0.771027697, 0.804702765, 0.791932059, 0.787391154,
+    "Transformers": [0.812681229, 0.804928131, 0.781027697, 0.804702765, 0.791932059, 0.787391154,
                      0.853118214, 0.844897959, 0.831202794, 0.823863716, 0.816, 0.805582466],
-    "Autoencoder": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    "Autoencoder": [0.829444028191919,	0.815789473684211,	0.804570430994141,	0.83034425770544,	0.814285714285714,	0.80034425770544,	0.872717651855647,	0.853333333333333,	0.836010476810925,	0.827141926138568,	0.809782608695652,	0.786262511707004]
 }
+create_diag(data, metric)
 
-df = pd.DataFrame(data)
-metric= 'Precision'
-# Plotting for each type of anomaly
-types = df['Type'].unique()
-for anomaly_type in types:
-    subset = df[df['Type'] == anomaly_type]
-    x_labels = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
-    metrics = ['MAX', 'AVG', 'MIN']
-
-    values = {metric: subset[subset['Metric'] == metric][x_labels].values.flatten() for metric in metrics}
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(x_labels, values['AVG'], marker='o', label='Average', color='blue')
-    plt.fill_between(x_labels, values['MIN'], values['MAX'], color='gray', alpha=0.3, label='Min-Max Range')
-
-    plt.title(f'{metric} for {anomaly_type}')
-    plt.xlabel('Model Architecture')
-    plt.ylabel(metric)
-    plt.ylim(0.7, 1.0)
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.6)
-
-    file_name = join_path([REPORTS_PATH, f"Diagram_{metric}_{anomaly_type}.png"])
-    print(file_name)
-    # Спроба зберегти графік
-    try:
-        plt.savefig(file_name, dpi=100)
-        print(f"Збережено: {file_name}")
-    except Exception as e:
-        print(f"Помилка при збереженні файлу: {e}")
-
-    #plt.show()
-
-# Example data creation similar to the given structure
-data = {
-    "Type": ["missing_steps"] * 3 + ["duplicate_steps"] * 3 + ["wrong_route"] * 3 + ["abnormal_duration"] * 3,
-    "Metric": ["MAX", "AVG", "MIN"] * 4,
-    "GNN": [1, 1, 0.99818112, 0.747203136, 0.739795918, 0.720431575, 1, 1, 1, 0.920168428, 0.901477833, 0.896498193],
-    "CNN": [1, 1, 0.98991212, 1, 1, 1, 0.998966517, 0.997461929, 0.984875536, 0.999137159, 0.997487437, 0.986186274],
-    "RNN": [1, 1, 0.9988115, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    "Transformers": [0.968642594, 0.966836735, 0.957225929, 1, 1, 1, 0.975278132, 0.961352657, 0.953257623, 1, 0.995098039, 0.989356144],
-    "Autoencoder": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
-}
-
-df = pd.DataFrame(data)
 metric= 'Recall'
-# Plotting for each type of anomaly
-types = df['Type'].unique()
-for anomaly_type in types:
-    subset = df[df['Type'] == anomaly_type]
-    x_labels = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
-    metrics = ['MAX', 'AVG', 'MIN']
-
-    values = {metric: subset[subset['Metric'] == metric][x_labels].values.flatten() for metric in metrics}
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(x_labels, values['AVG'], marker='o', label='Average', color='blue')
-    plt.fill_between(x_labels, values['MIN'], values['MAX'], color='gray', alpha=0.3, label='Min-Max Range')
-
-    plt.title(f'{metric} for {anomaly_type}')
-    plt.xlabel('Model Architecture')
-    plt.ylabel(metric)
-    plt.ylim(0.7, 1.05)
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.6)
-
-    file_name = join_path([REPORTS_PATH, f"Diagram_{metric}_{anomaly_type}.png"])
-    print(file_name)
-    # Спроба зберегти графік
-    try:
-        plt.savefig(file_name, dpi=100)
-        print(f"Збережено: {file_name}")
-    except Exception as e:
-        print(f"Помилка при збереженні файлу: {e}")
-
-    #plt.show
-
-
-# Example data creation similar to the given structure
 data = {
-    "Type": ["missing_steps"] * 3 + ["duplicate_steps"] * 3 + ["wrong_route"] * 3 + ["abnormal_duration"] * 3,
+    "Type": ["Missing_Steps"] * 3 + ["Duplicate_Steps"] * 3 + ["Wrong_Route"] * 3 + ["Abnormal_Duration"] * 3,
     "Metric": ["MAX", "AVG", "MIN"] * 4,
     "GNN": [1, 1, 0.99818112, 0.747203136, 0.739795918, 0.720431575, 1, 1, 1, 0.920168428, 0.901477833, 0.896498193],
     "CNN": [1, 1, 0.98991212, 1, 1, 1, 0.998966517, 0.997461929, 0.984875536, 0.999137159, 0.997487437, 0.986186274],
     "RNN": [1, 1, 0.9988115, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     "Transformers": [0.968642594, 0.966836735, 0.957225929, 1, 1, 1, 0.975278132, 0.961352657, 0.953257623, 1, 0.995098039, 0.989356144],
-    "Autoencoder": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-
+    "Autoencoder": [0.808018988467951,	0.794871794871795,	0.78239028243784,	0.898757186922278,	0.881443298969072,	0.87240901322061,	0.663790042134035,	0.64321608040201,	0.630361315285937,	0.782529776543412,	0.760204081632653,	0.751453712229392]
 }
+create_diag(data, metric)
 
-df = pd.DataFrame(data)
+
 metric= 'ROC AUC'
-# Plotting for each type of anomaly
-types = df['Type'].unique()
-for anomaly_type in types:
-    subset = df[df['Type'] == anomaly_type]
-    x_labels = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
-    metrics = ['MAX', 'AVG', 'MIN']
-
-    values = {metric: subset[subset['Metric'] == metric][x_labels].values.flatten() for metric in metrics}
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(x_labels, values['AVG'], marker='o', label='Average', color='blue')
-    plt.fill_between(x_labels, values['MIN'], values['MAX'], color='gray', alpha=0.3, label='Min-Max Range')
-
-    plt.title(f'{metric} for {anomaly_type}')
-    plt.xlabel('Model Architecture')
-    plt.ylabel(metric)
-    plt.ylim(0.7, 1.05)
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.6)
-
-    file_name = join_path([REPORTS_PATH, f"Diagram_{metric}_{anomaly_type}.png"])
-    print(file_name)
-    # Спроба зберегти графік
-    try:
-        plt.savefig(file_name, dpi=100)
-        print(f"Збережено: {file_name}")
-    except Exception as e:
-        print(f"Помилка при збереженні файлу: {e}")
-
-    #plt.show()
-
-# Example data creation similar to the given structure
 data = {
-    "Type": ["missing_steps"] * 3 + ["duplicate_steps"] * 3 + ["wrong_route"] * 3 + ["abnormal_duration"] * 3,
+    "Type": ["Missing_Steps"] * 3 + ["Duplicate_Steps"] * 3 + ["Wrong_Route"] * 3 + ["Abnormal_Duration"] * 3,
+    "Metric": ["MAX", "AVG", "MIN"] * 4,
+    "GNN": [1, 1, 0.99818112, 0.747203136, 0.739795918, 0.720431575, 1, 1, 1, 0.920168428, 0.901477833, 0.896498193],
+    "CNN": [1, 1, 0.98991212, 1, 1, 1, 0.998966517, 0.997461929, 0.984875536, 0.999137159, 0.997487437, 0.986186274],
+    "RNN": [1, 1, 0.9988115, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    "Transformers": [0.968642594, 0.966836735, 0.957225929, 1, 1, 1, 0.975278132, 0.961352657, 0.953257623, 1, 0.995098039, 0.989356144],
+    "Autoencoder": [0.984839484057821,	0.978093946478048,	0.96137536088787,	0.987396715529525,	0.978557118410618,	0.962740440815989,	0.962829067216978,	0.949612745731363,	0.924494478891575,	0.986767219895404,	0.976639474155631,	0.9529336490719]
+}
+create_diag(data, metric)
+
+
+metric= 'F1-Score'
+data = {
+    "Type": ["Missing_Steps"] * 3 + ["Duplicate_Steps"] * 3 + ["Wrong_Route"] * 3 + ["Abnormal_Duration"] * 3,
     "Metric": ["MAX", "AVG", "MIN"] * 4,
     "GNN": [0.906625721, 0.879332624, 0.87728097, 0.789357446, 0.781671159, 0.766848778, 0.906422966, 0.897674419, 0.894888612, 0.861696297, 0.84137931, 0.837606233],
     "CNN": [0.889398364, 0.868596882, 0.841142837, 0.898818666, 0.891402715, 0.88081719, 0.881591075, 0.876146789, 0.84386682, 0.888504773, 0.888888889, 0.853704662],
     "RNN": [0.912531538, 0.892018779, 0.865674263, 0.893703594, 0.891774892, 0.884642206, 0.907729253, 0.899159664, 0.875267116, 0.903172279, 0.8938317757009, 0.878904249283],
     "Transformers": [0.88583442, 0.883928571, 0.874096519, 0.9198426586, 0.917808219, 0.909050745, 0.910117262, 0.902777778, 0.888056011, 0.903426839, 0.893831776, 0.882061528],
-    "Autoencoder": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    "Autoencoder": [0.823551050694015,	0.805194805194805,	0.778318840132641,	0.855494787002857,	0.846534653465347,	0.827805954837375,	0.767952751477653,	0.73352435530086,	0.719563219615075,	0.79547081967644,	0.784210526315789,	0.776192078815411]
 }
+create_diag(data, metric)
 
-df = pd.DataFrame(data)
-metric= 'F1-Score'
-# Plotting for each type of anomaly
-types = df['Type'].unique()
-for anomaly_type in types:
-    subset = df[df['Type'] == anomaly_type]
-    x_labels = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
-    metrics = ['MAX', 'AVG', 'MIN']
 
-    values = {metric: subset[subset['Metric'] == metric][x_labels].values.flatten() for metric in metrics}
+metric= 'AUPRC'
+data = {
+    "Type": ["Missing_Steps"] * 3 + ["Duplicate_Steps"] * 3 + ["Wrong_Route"] * 3 + ["Abnormal_Duration"] * 3,
+    "Metric": ["MAX", "AVG", "MIN"] * 4,
+    "GNN": [0.844446351485671,	0.822307678854732,	0.809590632500457,	0.866484653520389,	0.843800056627862,	0.836484653520389,	0.839616432182361,	0.810471799805138,	0.80822087850241,	0.883402385273444,	0.863808905159156,	0.844079281546635],
+    "CNN": [0.747662562922596,	0.727256660436424,	0.683610176968654,	0.809057509634851,	0.761918557896354,	0.739484653520389,	0.748638115132408,	0.727827693217401,	0.685016629164422,	0.75318654708297,	0.716413733188511,	0.681890357556145],
+    "RNN": [0.83648536632445,	0.808173998448022,	0.789304364837686,	0.770057509634851,	0.753700186970665,	0.723750266461568,	0.829619228449579,	0.816909136031279,	0.790166716604604,	0.796584418482259,	0.775803088763888,	0.76911919482654],
+    "Transformers": [0.81149544093605,	0.805314888943925,	0.796789688804709,	0.794234951345159,	0.787738416017145,	0.772301771442679,	0.857285815809369,	0.836597267126622,	0.827977994309001,	0.8122804620705,	0.801500123788327,	0.79393970044952],
+    "Autoencoder": [0.83647626565599,	0.819717284871645,	0.800633065895245,	0.806490364443381,	0.795173428973859,	0.786004435591207,	0.759675888855015,	0.726147645778073,	0.705914100363204,	0.78735056823085,	0.764732588279543,	0.75996821145892]
+}
+create_diag(data, metric)
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(x_labels, values['AVG'], marker='o', label='Average', color='blue')
-    plt.fill_between(x_labels, values['MIN'], values['MAX'], color='gray', alpha=0.3, label='Min-Max Range')
 
-    plt.title(f'{metric} for {anomaly_type}')
-    plt.xlabel('Model Architecture')
-    plt.ylabel(metric)
-    plt.ylim(0.7, 1.05)
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.6)
 
-    file_name = join_path([REPORTS_PATH, f"Diagram_{metric}_{anomaly_type}.png"])
-    print(file_name)
-    # Спроба зберегти графік
-    try:
-        plt.savefig(file_name, dpi=100)
-        print(f"Збережено: {file_name}")
-    except Exception as e:
-        print(f"Помилка при збереженні файлу: {e}")
 
-    #plt.show()
 # Example data
 metric = 'Time per epoch'
 # Середні значення часу для кожної архітектури
 architectures = ['GNN', 'CNN', 'RNN', 'Transformers', 'Autoencoder']
-average_times = [32.6, 13.5, 282.3, 1575.3, 0]  # Значення для кожної архітектури
+average_times = [32.6, 13.5, 282.3, 1575.3, 41.6]  # Значення для кожної архітектури
 
 # Створення графіка
 fig, ax = plt.subplots(figsize=(8, 6))
