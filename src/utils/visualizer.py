@@ -837,7 +837,7 @@ def create_autoencoder_diagram_colors():
     # Encoder-Decoder Layers
     dot.node('Encoder', 'Encoder', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
     dot.node('Decoder', 'Decoder', shape='box', style='filled', color='#d9ead3', fontcolor='black')  # Pastel Green
-    dot.node('ReconstructedSeq', 'Reconstructed Sequence', shape='ellipse', style='filled', color='#add8e6',
+    dot.node('ReconstructedSeq', 'Reconstructed Sequence', shape='box', style='filled', color='#add8e6',
              fontcolor='black')  # Light Blue
 
     # Aggregation Layer
@@ -855,7 +855,7 @@ def create_autoencoder_diagram_colors():
     # Classification
     dot.node('FinalFC', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3',
              fontcolor='black')  # Pastel Blue
-    dot.node('Output', 'Classification Output', shape='ellipse', style='filled', color='#f4cccc',
+    dot.node('Output', 'Classification Output', shape='box', style='filled', color='#f4cccc',
              fontcolor='black')  # Pastel Red
 
     # Зв'язки між вузлами

@@ -274,7 +274,7 @@ def save_statistics_to_json(stats, file_path):
 
 def save2csv(df: pd.DataFrame, file_name: str):
     """Зберігає реєстр."""
-    print(df)
+    #print(df)
     if not isinstance(df, pd.DataFrame):
         if isinstance(df, dict) and all(isinstance(v, list) for v in df.values()):
             # Вирівнювання списків за довжиною

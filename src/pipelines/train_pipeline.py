@@ -43,7 +43,7 @@ def train_model(
     resume=False,
     checkpoint=None,
     data_file=None,
-    num_epochs=50,
+    num_epochs=51,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.001,
     batch_size=64,
@@ -194,6 +194,17 @@ def train_model(
             else:
                 epochs_no_improve += 1
                 logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
+
+            #for name, param in model.named_parameters():
+             #   if param.requires_grad:
+              #      print(f"{name}: grad_mean={param.grad.mean().item()}")
+
+            unique_edges = [torch.unique(item["edge_features"], dim=0).size(0) for item in data]
+            unique_node = [torch.unique(item["node_features"], dim=0).size(0) for item in data]
+            unique_doc = [torch.unique(item["doc_features"], dim=0).size(0) for item in data]
+            #print(f"Середня кількість унікальних атрибутів вузлів: {sum(unique_node) / len(unique_node)}")
+            #print(f"Середня кількість унікальних атрибутів зв'язків: {sum(unique_edges) / len(unique_edges)}")
+            #print(f"Середня кількість унікальних атрибутів документів: {sum(unique_doc) / len(unique_doc)}")
 
             # Збереження контрольної точки
             checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"

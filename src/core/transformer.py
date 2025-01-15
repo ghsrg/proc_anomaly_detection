@@ -164,7 +164,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
     selected_node_attrs = ["type", "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "SEQUENCE_COUNTER_",
                            "overdue_work", "duration_work"]
-    selected_edge_attrs = ["DURATION_", "taskaction_code", "overdue_work"]
+    selected_edge_attrs = ["DURATION_E", "taskaction_code_E", "overdue_work_E"]
     selected_doc_attrs = ["PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate", "CategoryL1", "CategoryL2",
                           "CategoryL3", "ClassSSD", "Company_SO"]
 
@@ -306,10 +306,16 @@ def calculate_statistics(model, data, batch_size=24, threshold=0.5):
             # Підготовка даних для моделі
             max_seq_length = max(item["sequence"].size(0) for item in batch)
             padded_sequences = torch.stack([
-                torch.cat([item["sequence"], torch.zeros(max_seq_length - item["sequence"].size(0),
-                                                         item["sequence"].size(1))])
+                torch.cat([
+                    item["sequence"].to(device),  # Перенесення на GPU
+                    torch.zeros(
+                        max_seq_length - item["sequence"].size(0),
+                        item["sequence"].size(1),
+                        device=device  # Створення тензора одразу на GPU
+                    )
+                ])
                 for item in batch
-            ]).to(device)
+            ])
 
             doc_features = torch.stack([item["doc_features"] for item in batch]).to(device)
             batch_labels = [item["label"].item() for item in batch]

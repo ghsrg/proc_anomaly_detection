@@ -230,7 +230,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
 
     selected_node_attrs = ["type", "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "SEQUENCE_COUNTER_",
                            "overdue_work", "duration_work"]
-    selected_edge_attrs = ["DURATION_", "taskaction_code", "overdue_work"]
+    selected_edge_attrs = ["DURATION_E", "taskaction_code_E", "overdue_work_E"]
     selected_doc_attrs = ["PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate", "CategoryL1", "CategoryL2",
                           "CategoryL3", "ClassSSD", "Company_SO"]
     #selected_attrs = ["DURATION_"]

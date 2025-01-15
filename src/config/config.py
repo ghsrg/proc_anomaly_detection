@@ -36,6 +36,7 @@ NORMALIZED_ANOMALOUS_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'norma
 
 RAW_PATH = join_path(['data', 'raw'])
 REGISTER_PATH = join_path([BASE_DATA_PATH, 'registers'])
+REPORTS_PATH = join_path(['reports'])
 
 BASE_OUTPUTS_PATH = join_path([BASE_DATA_PATH, 'outputs'])
 LEARN_DIAGRAMS_PATH = join_path([BASE_OUTPUTS_PATH, 'learn_diagrams'])
@@ -63,3 +64,4 @@ make_dir(TEST_DIAGRAMS_PATH)
 make_dir(NN_MODELS_CHECKPOINTS_PATH)
 make_dir(NN_MODELS_TRAINED_PATH)
 make_dir(NN_MODELS_DATA_PATH)
+make_dir(REPORTS_PATH)
