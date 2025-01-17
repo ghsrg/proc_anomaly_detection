@@ -875,4 +875,56 @@ def create_autoencoder_diagram_colors():
     return dot
 
 
+def create_generalized_diagram():
+    dot = Digraph(format='png', comment='General Architecture for Graph and Process Features')
 
+    # Вхідні дані
+    dot.node('InputGraph', 'Graph Data (Nodes + Edges) Features', shape='ellipse', style='filled', color='#add8e6',
+             fontcolor='black')  # Light Blue
+    dot.node('ProcessFeatures', 'General Process Features', shape='ellipse', style='filled', color='#add8e6',
+             fontcolor='black')  # Light Blue
+
+    # Графова гілка
+    dot.node('GraphInputLayer', 'Input Layer', shape='box', style='filled', color='#d9ead3',
+             fontcolor='black')  # Pastel Green
+    dot.node('GraphHidden1', 'Hidden Layer 1', shape='box', style='filled', color='#fff2cc',
+             fontcolor='black')  # Pastel Yellow
+    dot.node('GraphHiddenN', 'Hidden Layer N', shape='box', style='filled', color='#fff2cc',
+             fontcolor='black')  # Pastel Yellow
+
+    # Гілка загальних ознак
+    dot.node('ProcessInputLayer', 'Input Layer (Process Features)', shape='box', style='filled', color='#d9ead3',
+             fontcolor='black')  # Pastel Green
+    dot.node('ProcessHidden1', 'Hidden Layer', shape='box', style='filled', color='#fff2cc',
+             fontcolor='black')  # Pastel Yellow
+
+    # Об'єднання ознак
+    dot.node('FeatureConcat', 'Feature Concatenation', shape='parallelogram', style='filled', color='#f0f0f0',
+             fontcolor='black')  # Light Grey
+
+    # Повнозв'язний шар
+    dot.node('FullyConnected', 'Fully Connected Layer', shape='box', style='filled', color='#cfe2f3',
+             fontcolor='black')  # Pastel Blue
+    dot.node('Output', 'Output (Prediction)', shape='ellipse', style='filled', color='#f4cccc',
+             fontcolor='black')  # Pastel Red
+
+    # Зв’язки для графової гілки
+    dot.edge('InputGraph', 'GraphInputLayer', color='black')
+    dot.edge('GraphInputLayer', 'GraphHidden1', color='black')
+    dot.edge('GraphHidden1', 'GraphHiddenN', color='black')
+    dot.edge('GraphHiddenN', 'FeatureConcat', color='black')
+
+    # Зв’язки для гілки загальних ознак
+    dot.edge('ProcessFeatures', 'ProcessInputLayer', color='black')
+    dot.edge('ProcessInputLayer', 'ProcessHidden1', color='black')
+    dot.edge('ProcessHidden1', 'FeatureConcat', color='black')
+
+    # Об’єднання та вихід
+    dot.edge('FeatureConcat', 'FullyConnected', color='black')
+    dot.edge('FullyConnected', 'Output', color='black')
+
+    return dot
+
+    # Створення та рендеринг діаграми
+    diagram = create_general_architecture_diagram()
+    diagram.render('general_architecture_diagram', view=True)
