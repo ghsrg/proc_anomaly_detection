@@ -12,6 +12,7 @@ def run_experimental_mode(args):
     """
     Запуск попереднього режиму.
     """
+
     logger.info("Запуск режиму підготовки даних ...")
     initialize_register("graph_register", ['doc_id', 'root_proc_id', 'graph_path', 'date', 'doc_info'])
 
@@ -46,3 +47,4 @@ def run_experimental_mode(args):
             logger.error("Треба задати клькість генерації для normal_var та anomaly_var.")
 
     logger.info("Режим підготовки даних завершено.")
+

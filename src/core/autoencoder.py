@@ -78,6 +78,7 @@ def prepare_data(normal_graphs, anomalous_graphs, anomaly_type):
     :param anomaly_type: Тип аномалії для навчання.
     :return: Дані для Autoencoder, розмірності вузлів, зв'язків і документів.
     """
+
     data_list = []
     max_nodes = 0
     max_edges = 0
