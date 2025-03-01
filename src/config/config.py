@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 # Параметри логування
-LOG_LEVEL = "WARNING"  # Загальний рівень логування
+LOG_LEVEL = "DEBUG"  # Загальний рівень логування
 LOG_TO_SCREEN = {     # Налаштування для виводу на екран
     "DEBUG": 1,
     "INFO": 1,

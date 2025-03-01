@@ -186,7 +186,7 @@ def analyze_documents(caption_filter=None):
     # Отримання списку документів для аналізу
     docs = read_from_parquet("bpm_docs", columns=["doc_id", "doctype_id", "docstate_code"])
     documents = get_documents_for_definition(doc_def['ID'], docs,
-                                             [])  #3001624275244 3003643877955 # для дебага можемо вказати, який документ обробляти
+                                             [])  #3001413276418 3001624275244 3003643877955 # для дебага можемо вказати, який документ обробляти
 
     if documents is None or documents.empty:
         logger.warning("Аналіз перервано через відсутність документів для обраної дефініції.")

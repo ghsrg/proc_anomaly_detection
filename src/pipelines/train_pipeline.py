@@ -30,11 +30,11 @@ MODEL_MAP = {
     "CNN": ( cnn_core),
     "Transformer": (transformer),
     "Autoencoder": (autoencoder)
-
-#   "GAT": ( gat),
+#ADD new models
+    # "GAT": ( gat),
     # "VGAE": (vgae)
     #"TGN"
-#"CapsNets"
+    #"CapsNets"
 }
 
 def train_model(

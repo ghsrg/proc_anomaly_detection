@@ -1,6 +1,6 @@
 import argparse
 from src.utils.logger import get_logger
-#from src.modes.preparation_mode import run_experimental_mode
+from src.modes.preparation_mode import run_experimental_mode
 from src.modes.learning_mode import run_learning_mode
 from src.modes.analityc_mode import run_production_mode
 
@@ -39,7 +39,7 @@ def main():
         # Вибір режиму роботи
         if args.mode == "preparation":
             logger.info("Запущено режим підготовки даних")
-            #run_experimental_mode(args)
+            run_experimental_mode(args)
         elif args.mode == "learning":
             logger.info("Запущено режим навчання")
             run_learning_mode(args)
