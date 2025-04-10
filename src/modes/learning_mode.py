@@ -1,5 +1,6 @@
 import argparse
 from src.pipelines.train_pipeline import train_model
+from src.pipelines.train_predict_pipeline import train_model_pr
 from src.pipelines.retrain_pipeline import retrain_model
 from src.utils.logger import get_logger
 from src.core.normalize import normalize_all_graphs
@@ -58,6 +59,12 @@ def run_learning_mode(args):
             logger.info(
                 f"Донавчання моделі {model_type} для аномалії {anomaly_type} з контрольної точки {checkpoint_path}.")
             retrain_model(model_type=model_type, anomaly_type=anomaly_type, checkpoint=checkpoint_path, data_file=data_file)
+
+        elif action == "start_pr":
+            # Почати навчання з початку для PREDICTION
+            logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
+            train_model_pr(model_type=model_type, resume=False, checkpoint='',
+                        data_file=data_file)
 
         else:
             logger.error(f"Невідомий тип дії навчання: {action}. Доступні дії: start, resume, retrain.")

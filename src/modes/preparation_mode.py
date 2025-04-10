@@ -8,7 +8,7 @@ from src.utils.file_utils import initialize_register
 logger = get_logger(__name__)
 
 
-def run_experimental_mode(args):
+def run_preparation_mode(args):
     """
     Запуск попереднього режиму.
     """

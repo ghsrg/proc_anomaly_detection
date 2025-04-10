@@ -3,16 +3,16 @@ from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, save_statistics_to_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix
-from src.config.config import LEARN_DIAGRAMS_PATH, NN_MODELS_CHECKPOINTS_PATH, NN_MODELS_DATA_PATH
+from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
 import torch  # Для роботи з GPU
 from tqdm import tqdm
-import src.core.core_gnn as gnn_core
-import src.core.core_rnn as rnn_core
-import src.core.core_cnn as cnn_core
-import src.core.transformer as transformer
-import src.core.autoencoder as autoencoder
+import src.core.core_pr_gnn as gnn_core
+#import src.core.core_rnn as rnn_core
+#import src.core.core_cnn as cnn_core
+#import src.core.transformer as transformer
+#import src.core.autoencoder as autoencoder
 from sklearn.metrics import classification_report
 
 
@@ -25,11 +25,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "GNN": ( gnn_core),
-    "RNN": ( rnn_core),
-    "CNN": ( cnn_core),
-    "Transformer": (transformer),
-    "Autoencoder": (autoencoder)
+    "GNN": ( gnn_core)#,
+  #  "RNN": ( rnn_core),
+  #  "CNN": ( cnn_core),
+  #  "Transformer": (transformer),
+  #  "Autoencoder": (autoencoder)
 #ADD new models
     # "GAT": ( gat),
     # "VGAE": (vgae)
@@ -37,9 +37,8 @@ MODEL_MAP = {
     #"CapsNets"
 }
 
-def train_model(
+def train_model_pr(
     model_type,
-    anomaly_type,
     resume=False,
     checkpoint=None,
     data_file=None,
@@ -55,7 +54,6 @@ def train_model(
     Запускає процес навчання для вказаної моделі.
 
     :param model_type: Тип моделі (GNN, RNN, CNN, Transformers, Autoencoder).
-    :param anomaly_type: Тип аномалії для навчання.
     :param resume: Продовжити навчання з контрольної точки.
     :param checkpoint: Шлях до файлу контрольної точки.
     :param num_epochs: Кількість епох для навчання.
@@ -64,20 +62,18 @@ def train_model(
     :param batch_size: Розмір пакету для навчання.
     """
     try:
-        logger.info(f"Запуск навчання для моделі: {model_type}, тип аномалії: {anomaly_type}")
+        logger.info(f"Запуск навчання для моделі прогнозу: {model_type}")
 
         if model_type not in MODEL_MAP:
             raise ValueError(f"Невідомий тип моделі: {model_type}")
 
         core_module = MODEL_MAP[model_type]
 
-
-
         data = None
         input_dim = None
         if data_file:  # Спроба завантажити підготовлені дані
             #data_path = "/content/drive/MyDrive/prepared_data/data_Transformer_missing_steps.pt"
-            data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
+            data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
             data, input_dim, doc_dim = load_prepared_data(data_path)
         else:
             data_file = 'prepared_data'
@@ -86,15 +82,14 @@ def train_model(
             logger.info(f"data_list чи input_dim пусті, потрібна підготовка даних...")
             # Завантаження реєстрів
             normal_graphs = load_register('normalized_normal_graphs')
-            anomalous_graphs = load_register('normalized_anomalous_graphs')
 
-            if normal_graphs.empty or anomalous_graphs.empty:
-                raise ValueError("Реєстри графів порожні. Перевірте дані!")
+            if normal_graphs.empty:
+                raise ValueError("Реєстри нормалізованих графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
-            data, input_dim, doc_dim = core_module.prepare_data(normal_graphs, anomalous_graphs, anomaly_type)
+            data, input_dim, doc_dim = core_module.prepare_data(normal_graphs)
             #print(doc_dim)
             # Збереження підготовлених даних
-            data_path = join_path([NN_MODELS_DATA_PATH, f"{data_file}.pt"])
+            data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
 
         # Переміщення даних на GPU/CPU
@@ -137,7 +132,7 @@ def train_model(
         # Завантаження контрольної точки
         start_epoch = 0
         if resume and checkpoint:
-            checkpoint_path = join_path([NN_MODELS_CHECKPOINTS_PATH, f"{checkpoint}.pt"])
+            checkpoint_path = join_path([NN_PR_MODELS_CHECKPOINTS_PATH, f"{checkpoint}.pt"])
             if not is_file_exist(checkpoint_path):
                 raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint_path}")
             start_epoch, _, stats = load_checkpoint(checkpoint_path, model, optimizer, stats)
@@ -188,7 +183,7 @@ def train_model(
                 best_val_loss = train_loss
                 epochs_no_improve = 0
                 # Можна зберігати найкращу модель
-                checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_best.pt"
+                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_best.pt"
                 save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
                                 file_path=checkpoint_path, stats=stats)
             else:
@@ -207,7 +202,7 @@ def train_model(
             #print(f"Середня кількість унікальних атрибутів документів: {sum(unique_doc) / len(unique_doc)}")
 
             # Збереження контрольної точки
-            checkpoint_path = f"{NN_MODELS_CHECKPOINTS_PATH}/{model_type}_{anomaly_type}_epoch_{epoch + 1}.pt"
+            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Тестування після кожної епохи
@@ -216,18 +211,18 @@ def train_model(
 
             # Збереження статистики та візуалізація після кожної епохи
             save_training_diagram(stats,
-                                  f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}.png",
-                                  test_stats, title=f"{model_type} Training and Validation Metrics {anomaly_type} anomaly")
+                                  f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}.png",
+                                  test_stats, title=f"{model_type} Training and Validation Metrics")
             # Збереження матриці плутанини
             class_labels = ["Normal", "Anomalous"]
-            confusion_matrix_path = f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_confusion_matrix.png"
+            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix.png"
             # Візуалізація матриці плутанини
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
                 class_labels=class_labels,
                 file_path=confusion_matrix_path
             )
-            stat_path = join_path([LEARN_DIAGRAMS_PATH, f'{model_type}_{anomaly_type}_statistics'])
+            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
             save2csv(stats, stat_path)
 
             # Зупинка навчання
@@ -245,8 +240,8 @@ def train_model(
         test_stats = core_module.calculate_statistics(model, test_data)
         # Збереження фінальної статистики з тестуванням
         save_training_diagram(stats,
-                              f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_training_epoch_{epoch + 1}_Final.png",
-                              test_stats, title=f"{model_type} Training and Validation Metrics {anomaly_type} anomaly")
+                              f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",
+                              test_stats, title=f"{model_type} Training and Validation Metrics")
 
         stats["epochs"].append('Testing')
         stats["train_loss"].append('')
@@ -256,13 +251,13 @@ def train_model(
         stats["val_f1_score"].append(test_stats["f1_score"])
         stats["spend_time"].append('')
 
-        stat_path = join_path([LEARN_DIAGRAMS_PATH, f'{model_type}_{anomaly_type}_statistics'])
+        stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
         save2csv(stats, stat_path)
-        logger.info(f"Навчання завершено для моделі {model_type} з типом аномалії {anomaly_type}")
+        logger.info(f"Навчання завершено для моделі {model_type}")
 
         # Збереження матриці плутанини
         #class_labels = ["Normal", "Anomalous"]
-        #confusion_matrix_path = f"{LEARN_DIAGRAMS_PATH}/{model_type}_{anomaly_type}_confusion_matrix.png"
+        #confusion_matrix_path = f"{LEARN_DIAGRAMS_PATH}/{model_type}_confusion_matrix.png"
         # Візуалізація матриці плутанини
         #visualize_confusion_matrix(
         #    confusion_matrix_object=test_stats["confusion_matrix_test"],

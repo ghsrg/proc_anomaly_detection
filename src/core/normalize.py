@@ -27,7 +27,7 @@ def normalize_all_graphs(min_nodes, min_edges):
     normal_graphs = load_register("normal_graphs")
     anomalous_graphs = load_register("anomalous_graphs")
 
-    if normal_graphs.empty or anomalous_graphs.empty:
+    if normal_graphs.empty:## or anomalous_graphs.empty:
         raise ValueError("Реєстри графів порожні. Перевірте дані!")
 
     # Отримання імен файлів без шляхів
