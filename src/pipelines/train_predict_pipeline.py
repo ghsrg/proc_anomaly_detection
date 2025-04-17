@@ -8,7 +8,7 @@ from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
 import torch  # Для роботи з GPU
 from tqdm import tqdm
-import src.core.core_pr_gnn as gnn_core
+import src.core.core_pr_gnn as gnn_pr_core
 #import src.core.core_rnn as rnn_core
 #import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer
@@ -25,7 +25,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "GNN": ( gnn_core)#,
+    "GNNPredictor": ( gnn_pr_core)#,
   #  "RNN": ( rnn_core),
   #  "CNN": ( cnn_core),
   #  "Transformer": (transformer),
@@ -116,7 +116,7 @@ def train_model_pr(
             raise ValueError(f"Невідома модель: {model_type}")
 
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=1, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=400, doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
         #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 

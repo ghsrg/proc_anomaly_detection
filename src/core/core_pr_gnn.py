@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATConv, global_mean_pool
+from torch_geometric.data import Data
 from src.utils.file_utils import join_path, load_graph
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from src.config.config import NORMALIZED_PR_NORMAL_GRAPH_PATH, LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
@@ -10,8 +11,10 @@ from tqdm import tqdm
 logger = get_logger(__name__)
 
 class GNNPredictor(nn.Module):
-    def __init__(self, input_dim, hidden_dim, task_output_dim, time_output_dim, doc_dim, edge_dim=None):
+    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None):
         super(GNNPredictor, self).__init__()
+        task_output_dim, time_output_dim = output_dim, output_dim
+
         self.conv1 = GATConv(input_dim, hidden_dim)
         self.conv2 = GATConv(hidden_dim, hidden_dim)
         self.conv3 = GATConv(hidden_dim, hidden_dim)
@@ -21,11 +24,15 @@ class GNNPredictor(nn.Module):
         self.activation = nn.ReLU()
 
         self.task_head = nn.Linear(hidden_dim * 2, task_output_dim)
-        self.time_head = nn.Linear(hidden_dim * 2, time_output_dim)
+        self.time_head = nn.Linear(hidden_dim * 2, 1)
 
     def forward(self, data):
-        x, edge_index, batch = data.node_features, data.edge_index, data.batch
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        #x, edge_index, batch = data.x, data.edge_index, data.batch
+
         edge_attr = getattr(data, 'edge_features', None)
+        #edge_attr = getattr(data, 'edge_attr', None)
+
         doc_features = getattr(data, 'doc_features', None)
 
         x = self.activation(self.conv1(x, edge_index, edge_attr))
@@ -42,6 +49,7 @@ class GNNPredictor(nn.Module):
         task_output = self.task_head(x)
         time_output = self.time_head(x)
         return task_output, time_output
+
 def prepare_data(normal_graphs):
     """
     Prepares data for GNN prediction (next activity and time).
@@ -49,10 +57,6 @@ def prepare_data(normal_graphs):
     :param normal_graphs: Registry of normal graphs.
     :return: List of Data objects for GNN.
     """
-    from torch_geometric.data import Data
-    import torch
-    from tqdm import tqdm
-
     data_list = []
     max_features = 0
     max_doc_dim = 0
@@ -67,7 +71,7 @@ def prepare_data(normal_graphs):
             for attr, value in node_data.items():
                 if isinstance(value, (int, float)):
                     numeric_attrs.add(attr)
-                elif node_data.get("type") == "startEvent":
+                elif node_data.get("type") == "startEvent": # якщо глобальні атрибути додані в startEvent
                     global_attrs.add(attr)
 
         for _, _, edge_data in graph.edges(data=True):
@@ -89,9 +93,7 @@ def prepare_data(normal_graphs):
         return torch.tensor(doc_features, dtype=torch.float)
 
     # Основна функція перетворення графа на об'єкт Data для GNN
-    def transform_graph(graph, current_nodes, next_node_ids, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
-        import torch
-        from torch_geometric.data import Data
+    def transform_graph(graph, current_nodes, next_node, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
 
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
         nonlocal max_features
@@ -104,18 +106,17 @@ def prepare_data(normal_graphs):
         active_mask = []   # маркує поточні активні вузли (вже виконані)
         next_mask = []     # мітки — вузли, які мають бути наступними
 
-        for node_id, node_data in graph.nodes(data=True):
+        for node_id, node_data in graph.nodes(data=True): # виконуєм фічеризацію вузлів графа
             features = [
                 float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
                 for attr in node_attrs
             ]
             node_features.append(features)
             active_mask.append(1.0 if node_id in current_nodes else 0.0)
-            next_mask.append(1.0 if node_id in next_node_ids else 0.0)
 
+        # Формування матриці ознак вузлів + маска активних
         x = torch.tensor(node_features, dtype=torch.float)
         active_mask = torch.tensor(active_mask, dtype=torch.float).view(-1, 1)
-        next_mask = torch.tensor(next_mask, dtype=torch.float).view(-1, 1)
         x = torch.cat([x, active_mask], dim=1)  # додаємо маркер активності
 
         if x.shape[1] > 0:
@@ -155,12 +156,16 @@ def prepare_data(normal_graphs):
 
         doc_features = transform_doc(doc_info, selected_doc_attrs)
 
+        time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)],
+                                   dtype=torch.float) if next_node else None
+
         data = Data(
-            x=x,
-            edge_index=edge_index,
-            edge_attr=edge_attr,
-            y=next_mask,  # мітка — вектор, які вузли мають бути виконані наступними
-            doc_features=doc_features
+            x=x, # фічі вузлів з ознаклю активності та ознаклю настпних вузлів
+            edge_index=edge_index, # зв'язки між вузлами
+            edge_attr=edge_attr, # фічі зв'язків
+            y=torch.tensor([node_map[next_node]], dtype=torch.long) if next_node else None,  # мітка — вузел, який буде виконаний наступним
+            doc_features=doc_features, # фічі документа
+            time_target=time_target, # тривалість виконання наступного вузла
         )
 
         return data
@@ -190,35 +195,118 @@ def prepare_data(normal_graphs):
 
         # Визначаємо вузли, які вже були виконані (SEQUENCE_COUNTER_ > 0)
         executed = [n for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > 0]
-
         if not executed:
             continue
 
         # Створюємо кроки навчання: які вузли виконані, які будуть наступними
         for i in range(1, len(executed) + 1):
             current_nodes = executed[:i]
-            next_nodes = []
-            for n in current_nodes:
-                next_nodes.extend([t for _, t in graph.out_edges(n)])  # потенційні наступні вузли
-            next_nodes = list(set(next_nodes) - set(current_nodes))  # виключаємо вже виконані
+            executed_seq = [graph.nodes[n].get("SEQUENCE_COUNTER_", 0) for n in current_nodes]
+            max_seq = max(executed_seq)
 
-            data = transform_graph(graph, current_nodes, next_nodes, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
+            # шукаємо вузол з SEQUENCE_COUNTER_ > max_seq по всьому графу
+            candidates = [n for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > max_seq]
+            if not candidates:
+                continue
+
+            next_node = min(candidates, key=lambda n: graph.nodes[n]["SEQUENCE_COUNTER_"])
+
+            data = transform_graph(graph, current_nodes, next_node, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
             if data:
                 data_list.append(data)
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
     return data_list, max_features, max_doc_dim
 
+def train_epoch(model, data, optimizer, batch_size=24, alpha=0.50):
+    model.train()
+    total_loss = 0
+    num_batches = (len(data) + batch_size - 1) // batch_size
 
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
+        start_idx = batch_idx * batch_size
+        end_idx = min((batch_idx + 1) * batch_size, len(data))
+        batch = data[start_idx:end_idx]
 
-def calculate_task_statistics(model, data_loader, device):
+        batch_tensor = torch.cat([torch.full((item.x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)], dim=0)
+        x = torch.cat([item.x for item in batch], dim=0)
+        edge_index = torch.cat([item.edge_index for item in batch], dim=1)
+        edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
+        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+
+        y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
+        y_time = torch.stack([item.time_target for item in batch]).view(-1)
+
+        # Переносимо на GPU якщо є
+        x, edge_index, edge_attr, batch_tensor, doc_features = [t.to(model.task_head.weight.device) if t is not None else None for t in [x, edge_index, edge_attr, batch_tensor, doc_features]]
+        y_task = y_task.to(model.task_head.weight.device)
+        y_time = y_time.to(model.task_head.weight.device)
+
+        optimizer.zero_grad()
+        outputs_task, outputs_time = model.forward(
+            type("Batch", (object,), {
+                "x": x,
+                "edge_index": edge_index,
+                "edge_features": edge_attr,
+                "batch": batch_tensor,
+                "doc_features": doc_features
+            })
+        )
+
+        loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
+        loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
+        loss = loss_task + alpha * loss_time
+
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+    avg_loss = total_loss / num_batches
+    return avg_loss
+
+def calculate_statistics(model, data):
+    """
+    Розраховує статистику моделі після навчання (мультикласова класифікація).
+
+    :param model: Навчена модель.
+    :param data: Дані для оцінки (список об'єктів Data).
+    :return: Словник зі статистикою.
+    """
+    model.eval()
+    true_labels, predicted_labels = [], []
+
+    with torch.no_grad():
+        for graph in data:
+            # Якщо граф не має batch, додаємо фіктивний
+            if not hasattr(graph, 'batch'):
+                graph.batch = torch.zeros(graph.x.size(0), dtype=torch.long, device=graph.x.device)
+
+            task_logits, _ = model(graph)
+            pred = torch.argmax(task_logits, dim=1)
+            label = graph.y.item()
+
+            true_labels.append(label)
+            predicted_labels.append(pred.item())
+
+    cm = confusion_matrix(true_labels, predicted_labels)
+    precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
+    recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
+    f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "confusion_matrix": cm
+    }
+
+def calculate_statistics_(model, data_loader):
     model.eval()
     all_preds = []
     all_labels = []
 
     with torch.no_grad():
         for data in data_loader:
-            data = data.to(device)
             task_logits, _ = model(data)
             preds = torch.argmax(task_logits, dim=1)
             all_preds.extend(preds.cpu().numpy())
@@ -258,51 +346,6 @@ def calculate_time_statistics(model, data_loader, device):
         "r2": r2
     }
 
-def train_epoch(model, data, optimizer, batch_size=24, alpha=1.0):
-    model.train()
-    total_loss = 0
-    num_batches = (len(data) + batch_size - 1) // batch_size
-
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
-        start_idx = batch_idx * batch_size
-        end_idx = min((batch_idx + 1) * batch_size, len(data))
-        batch = data[start_idx:end_idx]
-
-        batch_tensor = torch.cat([torch.full((item.x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)], dim=0)
-        x = torch.cat([item.x for item in batch], dim=0)
-        edge_index = torch.cat([item.edge_index for item in batch], dim=1)
-        edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
-        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
-
-        y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
-        y_time = torch.stack([item.time_target for item in batch]).view(-1)
-
-        # Переносимо на GPU якщо є
-        x, edge_index, edge_attr, batch_tensor, doc_features = [t.to(model.task_head.weight.device) if t is not None else None for t in [x, edge_index, edge_attr, batch_tensor, doc_features]]
-        y_task = y_task.to(model.task_head.weight.device)
-        y_time = y_time.to(model.task_head.weight.device)
-
-        optimizer.zero_grad()
-        outputs_task, outputs_time = model.forward(
-            type("Batch", (object,), {
-                "node_features": x,
-                "edge_index": edge_index,
-                "edge_features": edge_attr,
-                "batch": batch_tensor,
-                "doc_features": doc_features
-            })
-        )
-
-        loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
-        loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
-        loss = loss_task + alpha * loss_time
-
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-
-    avg_loss = total_loss / num_batches
-    return avg_loss
 def create_optimizer(model, learning_rate=0.001):
     """
     Створює оптимізатор для навчання моделі.
@@ -313,3 +356,79 @@ def create_optimizer(model, learning_rate=0.001):
     """
     #return Adam(model.parameters(), lr=learning_rate)
     return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+
+def prepare_data_log_only(normal_graphs):
+    """
+    Формує дані для GNN, використовуючи лише інформацію з логів виконання (SEQUENCE_COUNTER_).
+    Метою є прогнозування наступної задачі з-поміж усіх можливих, без структури BPMN.
+
+    :param normal_graphs: Таблиця з graph_path і doc_info.
+    :return: data_list, max_features, max_doc_dim
+    """
+
+    data_list = []
+    max_features = 0
+    max_doc_dim = 0
+
+    selected_node_attrs = [
+        "DURATION_", "START_TIME_", "END_TIME_", "active_executions",
+        "SEQUENCE_COUNTER_", "overdue_work", "duration_work"
+    ]
+    selected_doc_attrs = [
+        "PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate",
+        "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
+    ]
+
+    def transform_doc(doc_info):
+        features = []
+        for attr in selected_doc_attrs:
+            value = doc_info.get(attr, 0)
+            try:
+                features.append(float(value))
+            except:
+                features.append(0.0)
+        return torch.tensor(features, dtype=torch.float)
+
+    for _, row in tqdm(normal_graphs.iterrows(), desc="Логи → графи"):
+        graph_file = row["graph_path"]
+        doc_info = row.get("doc_info", {})
+        full_path = join_path([NORMALIZED_PR_NORMAL_GRAPH_PATH, graph_file])
+        graph = load_graph(full_path)
+
+        executed_nodes = [(n, d) for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > 0]
+        if len(executed_nodes) < 2:
+            continue
+
+        executed_nodes.sort(key=lambda x: x[1]["SEQUENCE_COUNTER_"])
+        node_ids = [n for n, _ in executed_nodes]
+        node_map = {n: i for i, n in enumerate(node_ids)}
+
+        # Підготовка фіч для всіх виконаних вузлів
+        node_features = [
+            [
+                float(graph.nodes[n].get(attr, 0)) if isinstance(graph.nodes[n].get(attr), (int, float)) else 0.0
+                for attr in selected_node_attrs
+            ]
+            for n in node_ids
+        ]
+        x_all = torch.tensor(node_features, dtype=torch.float)
+
+        for i in range(len(node_ids) - 1):
+            current_nodes = node_ids[:i + 1]  # поточна історія
+            next_node = node_ids[i + 1]       # справжня наступна дія
+
+            active_mask = [1.0 if n in current_nodes else 0.0 for n in node_ids]
+            x = x_all.clone()
+            x = torch.cat([x, torch.tensor(active_mask, dtype=torch.float).view(-1, 1)], dim=1)
+
+            edge_index = torch.tensor([[], []], dtype=torch.long)  # без структури
+            edge_attr = torch.zeros((0, 1), dtype=torch.float)
+            y = torch.tensor([node_map[next_node]], dtype=torch.long)
+            doc_features = transform_doc(doc_info)
+
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, doc_features=doc_features)
+            data_list.append(data)
+            max_features = max(max_features, x.shape[1])
+            max_doc_dim = max(max_doc_dim, doc_features.numel())
+
+    return data_list, max_features, max_doc_dim

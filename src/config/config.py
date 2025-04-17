@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 # Параметри логування
-LOG_LEVEL = "WARNING"  # Загальний рівень логування
+LOG_LEVEL = "INFO"  # Загальний рівень логування
 LOG_TO_SCREEN = {     # Налаштування для виводу на екран
     "DEBUG": 1,
     "INFO": 1,
@@ -68,6 +68,7 @@ make_dir(GRAPH_PATH)
 make_dir(NORMAL_GRAPH_PATH)
 make_dir(ANOMALOUS_GRAPH_PATH)
 make_dir(NORMALIZED_NORMAL_GRAPH_PATH)
+make_dir(NORMALIZED_PR_NORMAL_GRAPH_PATH)
 make_dir(NORMALIZED_ANOMALOUS_GRAPH_PATH)
 make_dir(REGISTER_PATH)
 make_dir(LEARN_DIAGRAMS_PATH)
