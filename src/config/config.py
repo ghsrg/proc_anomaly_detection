@@ -23,7 +23,7 @@ ERROR_LOG_FILE = join_path([LOGS_PATH, f"error_{current_time}.log"])
 
 # Шляхи до даних
 BASE_DATA_PATH = join_path(['data'])
-BASE_PR_DATA_PATH = join_path(['data_pr'])
+BASE_PR_DATA_PATH = join_path(['data'])
 RAW_DATA_PATH = join_path([BASE_DATA_PATH,'raw'])
 PROCESSED_DATA_PATH = join_path([BASE_DATA_PATH, 'processed'])
 OUTPUTS_DATA_PATH = join_path([BASE_DATA_PATH, 'outputs'])

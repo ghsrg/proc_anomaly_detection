@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch_geometric.nn import GATConv, global_mean_pool
 from torch_geometric.data import Data
 from src.utils.file_utils import join_path, load_graph
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import precision_score,accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from src.config.config import NORMALIZED_PR_NORMAL_GRAPH_PATH, LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
 from src.utils.logger import get_logger
 from tqdm import tqdm
@@ -264,60 +264,54 @@ def train_epoch(model, data, optimizer, batch_size=24, alpha=0.50):
     avg_loss = total_loss / num_batches
     return avg_loss
 
-def calculate_statistics(model, data):
-    """
-    Розраховує статистику моделі після навчання (мультикласова класифікація).
-
-    :param model: Навчена модель.
-    :param data: Дані для оцінки (список об'єктів Data).
-    :return: Словник зі статистикою.
-    """
-    model.eval()
-    true_labels, predicted_labels = [], []
-
-    with torch.no_grad():
-        for graph in data:
-            # Якщо граф не має batch, додаємо фіктивний
-            if not hasattr(graph, 'batch'):
-                graph.batch = torch.zeros(graph.x.size(0), dtype=torch.long, device=graph.x.device)
-
-            task_logits, _ = model(graph)
-            pred = torch.argmax(task_logits, dim=1)
-            label = graph.y.item()
-
-            true_labels.append(label)
-            predicted_labels.append(pred.item())
-
-    cm = confusion_matrix(true_labels, predicted_labels)
-    precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
-
-    return {
-        "precision": precision,
-        "recall": recall,
-        "f1_score": f1,
-        "confusion_matrix": cm
-    }
-
-def calculate_statistics_(model, data_loader):
+def calculate_statistics(model, data_loader, top_k=3):
     model.eval()
     all_preds = []
     all_labels = []
 
     with torch.no_grad():
-        for data in data_loader:
-            task_logits, _ = model(data)
-            preds = torch.argmax(task_logits, dim=1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(data.y.cpu().numpy())
+        # Формуємо батч вручну із усіх об'єктів у data_loader
+        batch_tensor = torch.cat([
+            torch.full((item.x.size(0),), idx, dtype=torch.long)
+            for idx, item in enumerate(data_loader)
+        ], dim=0)
+
+        x = torch.cat([item.x for item in data_loader], dim=0)
+        edge_index = torch.cat([item.edge_index for item in data_loader], dim=1)
+        edge_attr = torch.cat([item.edge_attr for item in data_loader], dim=0) if data_loader[0].edge_attr is not None else None
+        doc_features = torch.stack([item.doc_features for item in data_loader], dim=0) if data_loader[0].doc_features is not None else None
+        y_task = torch.tensor([item.y.item() for item in data_loader], dtype=torch.long)
+
+        # Створюємо "batch" об'єкт вручну
+        data = type("Batch", (object,), {
+            "x": x,
+            "edge_index": edge_index,
+            "edge_features": edge_attr,
+            "batch": batch_tensor,
+            "doc_features": doc_features
+        })
+
+        task_logits, _ = model(data)
+        preds = torch.argmax(task_logits, dim=1)
+
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(y_task.cpu().numpy())
+
+        # Top-k Accuracy
+        topk_preds = torch.topk(task_logits, k=top_k, dim=1).indices.cpu().numpy()
+        topk_hits = [label in pred_row for label, pred_row in zip(all_labels, topk_preds)]
+        top_k_accuracy = sum(topk_hits) / len(topk_hits)
 
     precision = precision_score(all_labels, all_preds, average='macro')
     recall = recall_score(all_labels, all_preds, average='macro')
     f1 = f1_score(all_labels, all_preds, average='macro')
+    acc = accuracy_score(all_labels, all_preds)
+
     cm = confusion_matrix(all_labels, all_preds)
 
     return {
+        "accuracy": acc,
+        "top_k_accuracy": top_k_accuracy,
         "precision": precision,
         "recall": recall,
         "f1_score": f1,

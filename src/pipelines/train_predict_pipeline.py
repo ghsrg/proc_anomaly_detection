@@ -103,12 +103,6 @@ def train_model_pr(
             edge_dim = data[0]["edge_features"].size(1)  # Розмір другого виміру edge_features
         else:
             edge_dim = None  # Якщо зв'язків немає або вони не використовуються
-        #print(f"Визначено input_dim: {input_dim}")
-        #print(f"Визначено doc_dim: {doc_dim}")
-        #print(f"Визначено edge_dim: {edge_dim}")
-        #logger.info(f"Визначено input_dim: {input_dim}")
-        #logger.info(f"Визначено doc_dim: {doc_dim}")
-        #logger.info(f"Визначено edge_dim: {edge_dim}")
 
         # Ініціалізація моделі з динамічним input_dim
         model_class = getattr(core_module, model_type, None)
@@ -118,15 +112,15 @@ def train_model_pr(
 
         model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=400, doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
-        #model = core_module.GNN(input_dim=input_dim, hidden_dim=92, output_dim=1, doc_dim=doc_dim)
 
-        #diagram = generate_model_diagram(model, model_name="Graph Neural Network")
-        #diagram.render("gnn_model_diagram", view=True)  # Збереження і візуалізація
 
         # Оптимізатор
         optimizer = core_module.create_optimizer(model, learning_rate)
 
-        stats = {"epochs": [], "train_loss": [], "val_precision": [], "val_recall": [], "val_roc_auc": [], "val_f1_score": [], "spend_time": [], "val_auprc":[], "val_adr":[], "val_far":[], "val_fpr":[], "val_fnr":[] }
+        stats = {
+            "epochs": [], "train_loss": [], "spend_time": [],
+            "val_accuracy": [], "val_top_k_accuracy": [], "val_precision": [], "val_recall": [], "val_f1_score": []
+            }
         test_stats = {}
 
         # Завантаження контрольної точки
@@ -164,15 +158,12 @@ def train_model_pr(
             # Валідація
             val_stats = core_module.calculate_statistics(model, val_data)
             #print(val_stats)
-            stats["val_precision"].append(val_stats["precision"])
-            stats["val_recall"].append(val_stats["recall"])
-            stats["val_roc_auc"].append(val_stats.get("roc_auc", 0))
+            stats["val_accuracy"].append(val_stats["accuracy"])
+            stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
+            stats["val_precision"].append(val_stats.get("precision", 0))
+            stats["val_recall"].append(val_stats.get("recall", 0))
             stats["val_f1_score"].append(val_stats.get("f1_score", 0))
-            stats["val_auprc"].append(val_stats.get("auprc", 0))
-            stats["val_adr"].append(val_stats.get("adr", 0))
-            stats["val_far"].append(val_stats.get("far", 0))
-            stats["val_fpr"].append(val_stats.get("fpr", 0))
-            stats["val_fnr"].append(val_stats.get("fnr", 0))
+
             eph_end_time = datetime.now()
             eph_training_duration = eph_end_time - start_time
             stats["spend_time"].append(eph_training_duration.total_seconds())
@@ -190,17 +181,6 @@ def train_model_pr(
                 epochs_no_improve += 1
                 logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
 
-            #for name, param in model.named_parameters():
-             #   if param.requires_grad:
-              #      print(f"{name}: grad_mean={param.grad.mean().item()}")
-
-            unique_edges = [torch.unique(item["edge_features"], dim=0).size(0) for item in data]
-            unique_node = [torch.unique(item["node_features"], dim=0).size(0) for item in data]
-            unique_doc = [torch.unique(item["doc_features"], dim=0).size(0) for item in data]
-            #print(f"Середня кількість унікальних атрибутів вузлів: {sum(unique_node) / len(unique_node)}")
-            #print(f"Середня кількість унікальних атрибутів зв'язків: {sum(unique_edges) / len(unique_edges)}")
-            #print(f"Середня кількість унікальних атрибутів документів: {sum(unique_doc) / len(unique_doc)}")
-
             # Збереження контрольної точки
             checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
@@ -214,14 +194,15 @@ def train_model_pr(
                                   f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}.png",
                                   test_stats, title=f"{model_type} Training and Validation Metrics")
             # Збереження матриці плутанини
-            class_labels = ["Normal", "Anomalous"]
             confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix.png"
             # Візуалізація матриці плутанини
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
-                class_labels=class_labels,
-                file_path=confusion_matrix_path
+                class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
+                file_path=confusion_matrix_path,
+                top_k = 50
             )
+
             stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
             save2csv(stats, stat_path)
 
@@ -245,10 +226,11 @@ def train_model_pr(
 
         stats["epochs"].append('Testing')
         stats["train_loss"].append('')
-        stats["val_precision"].append(test_stats["precision"])
-        stats["val_recall"].append(test_stats["recall"])
-        stats["val_roc_auc"].append(test_stats["roc_auc"])
-        stats["val_f1_score"].append(test_stats["f1_score"])
+        stats["val_accuracy"].append(test_stats["accuracy"])
+        stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
+        stats["val_precision"].append(test_stats.get("precision", 0))
+        stats["val_recall"].append(test_stats.get("recall", 0))
+        stats["val_f1_score"].append(test_stats.get("f1_score", 0))
         stats["spend_time"].append('')
 
         stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
