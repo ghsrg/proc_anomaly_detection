@@ -91,7 +91,6 @@ def train_model_pr(
             # Збереження підготовлених даних
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
-
         # Переміщення даних на GPU/CPU
         for i in range(len(data)):
             for key, value in data[i].items():
@@ -196,11 +195,22 @@ def train_model_pr(
             # Збереження матриці плутанини
             confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix.png"
             # Візуалізація матриці плутанини
+
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
-                class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
+                #class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
                 file_path=confusion_matrix_path,
-                top_k = 50
+                top_k=('best', 50),
+                true_node_ids=val_stats.get("true_node_ids")
+            )
+            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix_worst.png"
+
+            visualize_confusion_matrix(
+                confusion_matrix_object=val_stats["confusion_matrix"],
+                # class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
+                file_path=confusion_matrix_path_w,
+                top_k=('worst', 50),
+                true_node_ids=val_stats.get("true_node_ids")
             )
 
             stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])

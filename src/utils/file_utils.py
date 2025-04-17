@@ -293,3 +293,17 @@ def save2csv(df: pd.DataFrame, file_name: str):
         logger.info(f"Дані збережено у {reg_data_path}")
     except Exception as e:
         logger.error(f"Помилка при збереженні даних: {e}")
+
+
+def save_confusion_matrix_to_csv(cm, class_labels, file_path):
+    """
+    Зберігає confusion matrix у CSV/XLSX з підписами класів по осях.
+
+    :param cm: numpy.ndarray, матриця плутанини.
+    :param class_labels: список ідентифікаторів класів (вузлів).
+    :param file_path: шлях до файлу без розширення (буде .xlsx).
+    """
+    df_cm = pd.DataFrame(cm, index=class_labels, columns=class_labels)
+    df_cm.index.name = 'True Label'
+    df_cm.columns.name = 'Predicted Label'
+    df_cm.to_excel(f"{file_path}.xlsx")

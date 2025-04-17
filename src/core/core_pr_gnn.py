@@ -96,6 +96,7 @@ def prepare_data(normal_graphs):
     def transform_graph(graph, current_nodes, next_node, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
 
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
+
         nonlocal max_features
 
         if graph.number_of_edges() == 0:
@@ -159,6 +160,8 @@ def prepare_data(normal_graphs):
         time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)],
                                    dtype=torch.float) if next_node else None
 
+        inverse_node_map = list(graph.nodes())  # список ID у правильному порядку
+
         data = Data(
             x=x, # фічі вузлів з ознаклю активності та ознаклю настпних вузлів
             edge_index=edge_index, # зв'язки між вузлами
@@ -166,6 +169,7 @@ def prepare_data(normal_graphs):
             y=torch.tensor([node_map[next_node]], dtype=torch.long) if next_node else None,  # мітка — вузел, який буде виконаний наступним
             doc_features=doc_features, # фічі документа
             time_target=time_target, # тривалість виконання наступного вузла
+            node_ids=inverse_node_map   # додаємо словник для відновлення оригінального node_id
         )
 
         return data
@@ -264,7 +268,7 @@ def train_epoch(model, data, optimizer, batch_size=24, alpha=0.50):
     avg_loss = total_loss / num_batches
     return avg_loss
 
-def calculate_statistics(model, data_loader, top_k=3):
+def calculate_statistics(model, val_data, top_k=3):
     model.eval()
     all_preds = []
     all_labels = []
@@ -273,16 +277,21 @@ def calculate_statistics(model, data_loader, top_k=3):
         # Формуємо батч вручну із усіх об'єктів у data_loader
         batch_tensor = torch.cat([
             torch.full((item.x.size(0),), idx, dtype=torch.long)
-            for idx, item in enumerate(data_loader)
+            for idx, item in enumerate(val_data)
         ], dim=0)
 
-        x = torch.cat([item.x for item in data_loader], dim=0)
-        edge_index = torch.cat([item.edge_index for item in data_loader], dim=1)
-        edge_attr = torch.cat([item.edge_attr for item in data_loader], dim=0) if data_loader[0].edge_attr is not None else None
-        doc_features = torch.stack([item.doc_features for item in data_loader], dim=0) if data_loader[0].doc_features is not None else None
-        y_task = torch.tensor([item.y.item() for item in data_loader], dtype=torch.long)
+        # Об'єднані тензори по всіх графах
+        x = torch.cat([item.x for item in val_data], dim=0)
+        edge_index = torch.cat([item.edge_index for item in val_data], dim=1)
+        edge_attr = torch.cat([item.edge_attr for item in val_data], dim=0) if val_data[0].edge_attr is not None else None
+        doc_features = torch.stack([item.doc_features for item in val_data], dim=0) if val_data[0].doc_features is not None else None
+        y_task = torch.tensor([item.y.item() for item in val_data], dtype=torch.long)
 
-        # Створюємо "batch" об'єкт вручну
+        # Усі node_ids у порядку побудови батчу
+        #node_ids_full = sum([item.id_map for item in val_data], [])
+        node_ids_full = [node_id for item in val_data for node_id in item.id_map]
+
+        # Створюємо об'єкт батчу
         data = type("Batch", (object,), {
             "x": x,
             "edge_index": edge_index,
@@ -291,11 +300,17 @@ def calculate_statistics(model, data_loader, top_k=3):
             "doc_features": doc_features
         })
 
+        # Прогнозуємо
         task_logits, _ = model(data)
         preds = torch.argmax(task_logits, dim=1)
 
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(y_task.cpu().numpy())
+
+        # Якщо є node_ids — конвертуємо індекси назад у ID вузлів
+        if node_ids_full:
+            all_pred_ids = [node_ids_full[i] for i in all_preds]
+            all_true_ids = [node_ids_full[i] for i in all_labels]
 
         # Top-k Accuracy
         topk_preds = torch.topk(task_logits, k=top_k, dim=1).indices.cpu().numpy()
@@ -306,8 +321,8 @@ def calculate_statistics(model, data_loader, top_k=3):
     recall = recall_score(all_labels, all_preds, average='macro')
     f1 = f1_score(all_labels, all_preds, average='macro')
     acc = accuracy_score(all_labels, all_preds)
-
     cm = confusion_matrix(all_labels, all_preds)
+
 
     return {
         "accuracy": acc,
@@ -315,7 +330,9 @@ def calculate_statistics(model, data_loader, top_k=3):
         "precision": precision,
         "recall": recall,
         "f1_score": f1,
-        "confusion_matrix": cm
+        "confusion_matrix": cm,
+        "true_node_ids": all_true_ids,
+        "pred_node_ids": all_pred_ids
     }
 
 def calculate_time_statistics(model, data_loader, device):

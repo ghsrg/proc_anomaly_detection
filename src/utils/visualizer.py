@@ -1,7 +1,11 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import numpy as np
+
 from src.utils.logger import get_logger
 from src.utils.graph_utils import clean_graph
+from src.utils.file_utils import save2csv, save_confusion_matrix_to_csv
 import pandas as pd
 from graphviz import Digraph
 import inspect
@@ -164,9 +168,6 @@ def visualize_distribution(distribution_data, file_path):
     plt.grid(True)
     plt.savefig(file_path, dpi=100)
     plt.close()
-
-
-
 
 
 def plot_confusion_matrix(true_labels, predicted_labels, class_labels, file_path=None, normalize=False):
@@ -355,12 +356,82 @@ def visualize_distribution(node_distribution, edge_distribution, file_path=None)
         print(f"Графік розподілення збережено у {file_path}")
     else:
         plt.show()
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix
-import numpy as np
 
-def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_path=None, top_k=None):
+
+def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_path=None, top_k=None,
+                                true_node_ids=None):
+    if isinstance(confusion_matrix_object, dict):
+        true_labels = confusion_matrix_object["true_labels"]
+        predicted_labels = confusion_matrix_object["predicted_labels"]
+        cm = confusion_matrix(true_labels, predicted_labels)
+    else:
+        cm = confusion_matrix_object
+        true_labels = list(range(cm.shape[0]))
+        predicted_labels = list(range(cm.shape[1]))
+
+    if class_labels is None:
+        if true_node_ids is not None:
+            unique_indices = sorted(set(true_labels + predicted_labels))
+            try:
+                class_labels = [
+                    true_node_ids[i][:25] if i < len(true_node_ids) else str(i)
+                    for i in unique_indices
+                ]
+            except Exception as e:
+                print("ERROR mapping class_labels from node_ids:", e)
+                class_labels = [str(i) for i in unique_indices]
+        else:
+            class_labels = [str(i) for i in range(cm.shape[0])]
+
+        # Збереження повної матриці перед top_k
+    if file_path:
+        save_confusion_matrix_to_csv(cm, class_labels, file_path+ '_full')
+
+        # Обробка top_k
+    if top_k is not None and len(class_labels) == cm.shape[0]:
+        if isinstance(top_k, tuple):
+            mode, k = top_k
+            row_sums = np.sum(cm, axis=1)
+            correct = np.diag(cm)
+            mistakes = row_sums - correct
+
+            if mode == 'best':
+                top_k_indices = np.argsort(correct)[::-1][:k]  # Найбільше правильних
+            elif mode == 'worst':
+                top_k_indices = np.argsort(mistakes)[::-1][:k]  # Найбільше помилок
+            else:
+                raise ValueError("top_k повинен бути або int, або ('best' | 'worst', k)")
+        elif isinstance(top_k, int):
+            correct = np.diag(cm)
+            top_k_indices = np.argsort(correct)[::-1][:top_k]  # Стандартна поведінка
+        else:
+            raise TypeError("top_k повинен бути int або tuple")
+
+        cm = cm[np.ix_(top_k_indices, top_k_indices)]
+        class_labels = [class_labels[i] for i in top_k_indices]
+
+        # Обрізка назв
+    class_labels = [label[:25] for label in class_labels]
+
+    plt.figure(figsize=(min(1 + 0.5 * len(class_labels), 20), min(1 + 0.5 * len(class_labels), 18)))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", norm=LogNorm(vmin=1, vmax=cm.max()), xticklabels=class_labels, yticklabels=class_labels)
+
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted Node ID")
+    plt.ylabel("True Node ID")
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+        # Також зберігаємо з актуальною top_k матрицею
+        save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
+    else:
+        plt.show()
+
+
+
+def visualize_confusion_matrix_bk2(confusion_matrix_object, class_labels=None, file_path=None, top_k=None):
     """
     Візуалізує матрицю плутанини з опціональним скороченням до top_k найчастіших класів.
 
