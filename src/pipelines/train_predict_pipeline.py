@@ -117,7 +117,7 @@ def train_model_pr(
 
         stats = {
             "epochs": [], "train_loss": [], "spend_time": [],
-            "val_accuracy": [], "val_top_k_accuracy": [], "val_precision": [], "val_recall": [], "val_f1_score": [],
+            "val_accuracy": [], "val_top_k_accuracy": [], #"val_precision": [], "val_recall": [], "val_f1_score": [],
              "val_mae": [], "val_rmse": [], "val_r2": []
             }
         test_stats = {}
@@ -144,32 +144,32 @@ def train_model_pr(
         epochs_no_improve = 0  # Лічильник епох без покращення
 
         #for epoch in range(start_epoch, num_epochs):
-        for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох", dynamic_ncols=True):
-            logger.info(f"Епоха {epoch + 1}/{num_epochs}")
+        for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох",position=0, dynamic_ncols=False, leave=False ):
+            #logger.info(f"Епоха {epoch + 1}/{num_epochs}")
             #print(f"Епоха {epoch + 1}/{num_epochs}")
             stats["epochs"].append(epoch + 1)
 
             # Навчання за епоху
             train_loss = core_module.train_epoch(model, train_data, optimizer, batch_size)
             stats["train_loss"].append(train_loss)
-            logger.info(f"Втрати на навчанні: {train_loss}")
+            #logger.info(f"Втрати на навчанні: {train_loss}")
 
             # Валідація
             val_stats = core_module.calculate_statistics(model, val_data)
             #print(val_stats)
-            stats["val_accuracy"].append(val_stats["accuracy"])
-            stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
-            stats["val_precision"].append(val_stats.get("precision", 0))
-            stats["val_recall"].append(val_stats.get("recall", 0))
-            stats["val_f1_score"].append(val_stats.get("f1_score", 0))
-            stats["val_mae"].append(val_stats.get("mae", 0))
-            stats["val_rmse"].append(val_stats.get("rmse", 0))
-            stats["val_r2"].append(val_stats.get("r2", 0))
+            if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
+            if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
+            if "val_precision" in stats: stats["val_precision"].append(val_stats.get("precision", 0))
+            if "val_recall" in stats: stats["val_recall"].append(val_stats.get("recall", 0))
+            if "val_f1_score" in stats: stats["val_f1_score"].append(val_stats.get("f1_score", 0))
+            if "val_mae" in stats: stats["val_mae"].append(val_stats.get("mae", 0))
+            if "val_rmse" in stats: stats["val_rmse"].append(val_stats.get("rmse", 0))
+            if "val_r2" in stats: stats["val_r2"].append(val_stats.get("r2", 0))
 
             eph_end_time = datetime.now()
             eph_training_duration = eph_end_time - start_time
             stats["spend_time"].append(eph_training_duration.total_seconds())
-            logger.info(f"Статистика валідації: {val_stats}")
+            #logger.info(f"Статистика валідації: {val_stats}")
 
             if "accuracy" in val_stats:
                 #print(val_stats["accuracy"])
@@ -187,7 +187,7 @@ def train_model_pr(
                                 file_path=checkpoint_path, stats=stats)
             else:
                 epochs_no_improve += 1
-                logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
+                #logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
 
             # Збереження контрольної точки
             checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_epoch_{epoch + 1}.pt"

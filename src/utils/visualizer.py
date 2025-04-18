@@ -38,6 +38,7 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
         'FPR': ('val_fpr', 'pink', 0.5),
         'FNR': ('val_fnr', 'cyan', 0.5),
         'ACC': ('val_accuracy', 'orange',  2.5),
+        'TOP-k-ACC': ('val_top_k_accuracy', 'purple',  1.5),
         'MAE': ('val_mae', 'purple', 0.5),
         'RMSE': ('val_rmse', 'red', 2.5),
         'R2': ('val_r2', 'brown', 1)
@@ -48,6 +49,7 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
 
     for label, (key, color, lw) in metrics.items():
         if key not in stats:
+            print(f'passed {key}')
             continue  # Пропускаємо метрику, якої немає в статистиці
         ax1.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color, linewidth=lw)
 

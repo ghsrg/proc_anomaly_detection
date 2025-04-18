@@ -253,7 +253,8 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
 
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", leave=False, dynamic_ncols=True):
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", position=1,leave=False, dynamic_ncols=True):
+
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, len(data))
         batch = data[start_idx:end_idx]
@@ -364,6 +365,7 @@ def calculate_statistics(model, val_data, top_k=3):
     mse = mean_squared_error(time_labels, time_preds)
     rmse = mse ** 0.5
     r2 = r2_score(time_labels, time_preds)
+    r2 = max(0, r2)  # якщо R² < 0, встановлюємо 0 щоб на графіку не було негативних значень
 
     return {
         "accuracy": acc,
@@ -374,28 +376,6 @@ def calculate_statistics(model, val_data, top_k=3):
         "confusion_matrix": cm,
         "true_node_ids": all_true_ids,
         "pred_node_ids": all_pred_ids,
-        "mae": mae,
-        "rmse": rmse,
-        "r2": r2
-    }
-
-def calculate_time_statistics(model, data_loader, device):
-    model.eval()
-    all_preds = []
-    all_labels = []
-
-    with torch.no_grad():
-        for data in data_loader:
-            data = data.to(device)
-            _, time_output = model(data)
-            all_preds.extend(time_output.view(-1).cpu().numpy())
-            all_labels.extend(data.time_target.view(-1).cpu().numpy())
-
-    mae = mean_absolute_error(all_labels, all_preds)
-    rmse = mean_squared_error(all_labels, all_preds, squared=False)
-    r2 = r2_score(all_labels, all_preds)
-
-    return {
         "mae": mae,
         "rmse": rmse,
         "r2": r2
