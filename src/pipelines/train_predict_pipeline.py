@@ -10,6 +10,7 @@ import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import src.core.core_GATConv_pr as GATConv_pr_core
+import src.core.core_TGAT_pr as TGAT_pr_core
 #import src.core.core_rnn as rnn_core
 #import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer
@@ -26,7 +27,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "GATConv_pr": (GATConv_pr_core)#,
+    "GATConv_pr": (GATConv_pr_core),
+    "TGAT_pr": (TGAT_pr_core)#,
   #  "RNN": ( rnn_core),
   #  "CNN": ( cnn_core),
   #  "Transformer": (transformer),
@@ -198,11 +200,13 @@ def train_model_pr(
             #logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
 
             # Збереження статистики та візуалізація після кожної епохи
+            #file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_epoch_{epoch + 1}.png"
+            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_dim-{hidden_dim}_bs-{batch_size}.png"
             save_training_diagram(stats,
-                                  f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}.png",
+                                  file_path,
                                   test_stats, title=f"{model_type} Training and Validation Metrics")
             # Збереження матриці плутанини
-            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix.png"
+            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_CM.png"
             # Візуалізація матриці плутанини
 
             visualize_confusion_matrix(
@@ -212,7 +216,7 @@ def train_model_pr(
                 top_k=('best', 50),
                 true_node_ids=val_stats.get("true_node_ids")
             )
-            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_confusion_matrix_worst.png"
+            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_CM_worst.png"
 
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
@@ -245,11 +249,11 @@ def train_model_pr(
 
         stats["epochs"].append('Testing')
         stats["train_loss"].append(train_loss)
-        stats["val_accuracy"].append(test_stats["accuracy"])
-        stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
-        stats["val_precision"].append(test_stats.get("precision", 0))
-        stats["val_recall"].append(test_stats.get("recall", 0))
-        stats["val_f1_score"].append(test_stats.get("f1_score", 0))
+        if "val_accuracy" in stats: stats["val_accuracy"].append(test_stats["accuracy"])
+        if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
+        if "val_precision" in stats: stats["val_precision"].append(test_stats.get("precision", 0))
+        if "val_recall" in stats: stats["val_recall"].append(test_stats.get("recall", 0))
+        if "val_f1_score" in stats: stats["val_f1_score"].append(test_stats.get("f1_score", 0))
         stats["spend_time"].append('')
 
         stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])

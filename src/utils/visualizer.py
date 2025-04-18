@@ -49,7 +49,7 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
 
     for label, (key, color, lw) in metrics.items():
         if key not in stats:
-            print(f'passed {key}')
+            #print(f'passed {key}')
             continue  # Пропускаємо метрику, якої немає в статистиці
         ax1.plot(stats['epochs'], stats[key], label=label, linestyle='-', color=color, linewidth=lw)
 
