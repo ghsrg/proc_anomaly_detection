@@ -416,7 +416,12 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
     class_labels = [label[:25] for label in class_labels]
 
     plt.figure(figsize=(min(1 + 0.5 * len(class_labels), 20), min(1 + 0.5 * len(class_labels), 18)))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", norm=LogNorm(vmin=1, vmax=cm.max()), xticklabels=class_labels, yticklabels=class_labels)
+    vmax = cm.max()
+    if vmax < 1:
+        norm = None
+    else:
+        norm = LogNorm(vmin=1, vmax=vmax)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", norm=norm, xticklabels=class_labels, yticklabels=class_labels)
 
     plt.title("Confusion Matrix")
     plt.xlabel("Predicted Node ID")

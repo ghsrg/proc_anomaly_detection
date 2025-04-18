@@ -319,172 +319,6 @@ def calculate_global_statistics(graph_paths, all_docs_info, min_nodes=6, min_edg
 
     return final_stats
 
-def calculate_global_statistics_old(graph_paths, all_docs_info, min_nodes=6, min_edges=6):
-    """
-    Розраховує глобальні статистики для нормалізації атрибутів графів, включаючи кількість вузлів та зв'язків.
-
-    :param graph_paths: Список шляхів до графів.
-    :param all_docs_info: Список атрибутів документів у форматі JSON.
-    :param min_edges:  Мінімальна кількість вузлів для графа.
-    :param min_nodes: Мінімальна кількість зв'язків для графа.
-    :return: Словник статистик для нормалізації.
-    """
-    # Фіксація часу початку нормалізації
-    start_time = datetime.now()
-    print(f"Час початку статистики: {start_time}")
-    logger.info(f"Час початку статистики: {start_time}")
-
-
-    stats = {
-        "node_numeric": defaultdict(list),
-        "node_text": defaultdict(set),
-        "edge_numeric": defaultdict(list),
-        "edge_text": defaultdict(set),
-        "doc_numeric": defaultdict(list),
-        "doc_text": defaultdict(set),
-        "node_count": [],
-        "edge_count": []
-    }
-    node_distribution = defaultdict(int)
-    edge_distribution = defaultdict(int)
-
-    total_graphs = len(graph_paths)
-    prev_progress_percent = 0
-
-    for idx, graph_path in enumerate(graph_paths, start=1):
-        graph = load_graph(graph_path)
-        if idx > 500:
-            break
-        # Оновлення прогресу
-        progress_percent = (idx / total_graphs) * 100
-        if progress_percent - prev_progress_percent >= 1:
-            print(f"Зібрано статистику з {idx}/{total_graphs} ({progress_percent:.2f}%)")
-            prev_progress_percent = progress_percent
-
-        # Перевірка на мінімальну кількість вузлів та зв'язків
-        if len(graph.nodes) < min_nodes or len(graph.edges) < min_edges:
-            logger.warning(f"Граф {graph_path} пропущена статистика через недостатню кількість вузлів або зв'язків.")
-            continue
-
-        # Додаємо статистику по кількості вузлів та зв'язків
-        node_count = len(graph.nodes)
-        edge_count = len(graph.edges)
-        stats["node_count"].append(node_count)
-        stats["edge_count"].append(edge_count)
-
-        # Оновлення розподілу вузлів і зв'язків
-        node_distribution[node_count] += 1
-        edge_distribution[edge_count] += 1
-
-        # Збір статистики по атрибутах вузлів
-        for node, data in graph.nodes(data=True):
-            for attr, value in data.items():
-                if attr == "TASK_ID_":
-                    continue
-                if isinstance(value, (int, float)):
-                    stats["node_numeric"][attr].append(0.0 if np.isnan(value) else float(value))
-                elif isinstance(value, str):
-                    stats["node_text"][attr].add(value)
-
-
-        # Збір статистики по атрибутах зв'язків
-        for _, _, data in graph.edges(data=True):
-            for attr, value in data.items():
-                if attr == "id":
-                    continue
-                if isinstance(value, (int, float)):
-                    stats["edge_numeric"][attr].append(0.0 if np.isnan(value) else float(value))
-                elif isinstance(value, str):
-                    stats["edge_text"][attr].add(value)
-
-        # Збір статистики по атрибутах документів
-        for doc_info in all_docs_info:
-            for attr, value in doc_info.items():
-                if isinstance(value, (int, float)):
-                    stats["doc_numeric"][attr].append(0.0 if np.isnan(value) else float(value))
-                elif isinstance(value, str):
-                    stats["doc_text"][attr].add(value)
-
-        del graph
-    gc.collect()
-    ###***
-    end_time = datetime.now()
-    duration = end_time - start_time
-    print(f"Тривалість збору даних: {duration}")
-    ###***
-
-    final_stats = {
-        "node_numeric": {
-            attr: {
-                "min": np.min(values),
-                "max": np.max(values),
-                "mean": np.mean(values),
-                "std": np.std(values)
-            }
-            for attr, values in stats["node_numeric"].items() if values
-        },
-        "node_text": {
-            attr: {
-                "unique_values": sorted(values)
-            }
-            for attr, values in stats["node_text"].items()
-        },
-        "edge_numeric": {
-            attr: {
-                "min": np.min(values),
-                "max": np.max(values),
-                "mean": np.mean(values),
-                "std": np.std(values)
-            }
-            for attr, values in stats["edge_numeric"].items() if values
-        },
-        "edge_text": {
-            attr: {
-                "unique_values": sorted(values)
-            }
-            for attr, values in stats["edge_text"].items()
-        },
-        "doc_numeric": {
-            attr: {
-                "min": np.min(values),
-                "max": np.max(values),
-                "mean": np.mean(values),
-                "std": np.std(values)
-            }
-            for attr, values in stats["doc_numeric"].items() if values
-        },
-        "doc_text": {
-            attr: {
-                "unique_values": sorted(values)
-            }
-            for attr, values in stats["doc_text"].items()
-        },
-        "node_count": {
-            "min": np.min(stats["node_count"]),
-            "max": np.max(stats["node_count"]),
-            "mean": np.mean(stats["node_count"]),
-            "std": np.std(stats["node_count"])
-        },
-        "edge_count": {
-            "min": np.min(stats["edge_count"]),
-            "max": np.max(stats["edge_count"]),
-            "mean": np.mean(stats["edge_count"]),
-            "std": np.std(stats["edge_count"])
-        }
-    }
-    ###***
-    end_time = datetime.now()
-    duration = end_time - start_time
-    print(f"Час оновлення списків: {end_time}")
-    print(f"Тривалість оновлення списків: {duration}")
-    ###***
-    stat_path = join_path([PROCESSED_DATA_PATH, f'global_statistics'])
-    save_statistics_to_json(final_stats, stat_path)
-    end_time = datetime.now()
-    training_duration = end_time - start_time
-    print(f"Час завершення статистики: {end_time}")
-    print(f"Тривалість статистики: {training_duration}")
-    return final_stats
 
 
 def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
@@ -500,16 +334,19 @@ def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
     # Нормалізація вузлів
     for node, data in normalized_graph.nodes(data=True):
         for attr in global_stats["node_numeric"]:
-            value = data.get(attr, 0.0)
+            value = data.get(attr, float(0.0))
             try:
-                value = float(value) if not np.isnan(value) else 0.0
+                value = float(value) if not np.isnan(value) else float(0.0)
             except (ValueError, TypeError):
                 value = 0.0
             stats = global_stats["node_numeric"][attr]
             if stats["max"] > stats["min"]:
-                data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
+                if value < stats["min"]:  # значення некоректне або відсутнє
+                    data[attr] = float(0.0)
+                else:
+                    data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
             else:
-                data[attr] = 0.0
+                data[attr] = float(0.0)
 
         for attr in global_stats["node_text"]:
             mapping = {v: i for i, v in enumerate(global_stats["node_text"][attr]["unique_values"])}
@@ -518,16 +355,19 @@ def normalize_graph(graph: nx.Graph, global_stats: dict) -> nx.Graph:
     # Нормалізація ребер
     for u, v, data in normalized_graph.edges(data=True):
         for attr in global_stats["edge_numeric"]:
-            value = data.get(attr, 0.0)
+            value = data.get(attr, float(0.0))
             try:
-                value = float(value) if not np.isnan(value) else 0.0
+                value = float(value) if not np.isnan(value) else float(0.0)
             except (ValueError, TypeError):
-                value = 0.0
+                value = float(0.0)
             stats = global_stats["edge_numeric"][attr]
             if stats["max"] > stats["min"]:
-                data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
+                if value < stats["min"]:  # значення некоректне або відсутнє
+                    data[attr] = float(0.0)
+                else:
+                    data[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
             else:
-                data[attr] = 0.0
+                data[attr] = float(0.0)
 
         for attr in global_stats["edge_text"]:
             mapping = {v: i for i, v in enumerate(global_stats["edge_text"][attr]["unique_values"])}
@@ -559,17 +399,20 @@ def normalize_doc_info(doc_info: dict, global_stats: dict) -> dict:
 
     # Нормалізація числових атрибутів документа
     for attr in global_stats["doc_numeric"]:
-        value = doc_info.get(attr, 0.0)
+        value = doc_info.get(attr, float(0.0))
         #print('doc_numeric', attr, value)
         try:
-            value = float(value) if not np.isnan(value) else 0.0
+            value = float(value) if not np.isnan(value) else float(0.0)
         except (ValueError, TypeError):
-            value = 0.0
+            value = float(0.0)
         stats = global_stats["doc_numeric"][attr]
         if stats["max"] > stats["min"]:
-            normalized_doc[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
+            if value < stats["min"]:  # значення некоректне або відсутнє
+                normalized_doc[attr] = float(0.0)
+            else:
+                normalized_doc[attr] = (value - stats["min"]) / (stats["max"] - stats["min"])
         else:
-            normalized_doc[attr] = 0.0
+            normalized_doc[attr] = float(0.0)
 
     # Нормалізація текстових атрибутів документа
     for attr in global_stats["doc_text"]:

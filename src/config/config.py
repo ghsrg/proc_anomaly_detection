@@ -33,7 +33,7 @@ GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'graphs'])
 NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normal_graphs'])
 ANOMALOUS_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'anomalous_graphs'])
 NORMALIZED_NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normalized_normal_graphs'])
-NORMALIZED_PR_NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normalized_pr_normal_graphs'])
+NORMALIZED_PR_NORMAL_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normalized_normal_graphs'])
 NORMALIZED_ANOMALOUS_GRAPH_PATH = join_path([BASE_DATA_PATH, 'processed', 'normalized_anomalous_graphs'])
 
 RAW_PATH = join_path(['data', 'raw'])

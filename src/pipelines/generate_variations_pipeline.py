@@ -19,7 +19,7 @@ def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
 
        :param total_count: Загальна кількість графів для генерації.
        :param anomaly_type: Тип аномалії (якщо None, генеруються нормальні графи).
-       :param min_nodes_count: Мінімальна кількість вузлів у графі для обробки.
+       :param min_nodes_count: Мінімальна кількість вузлів у графі для обробки, якщо вузлів менше, граф пропускається.
        """
     try:
         graph_register = load_register('graph_register')  # Реєстр реальних графів
@@ -60,8 +60,9 @@ def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
             try:
                 # Завантаження оригінального графа
                 orig_graph = load_graph(file_name=graph_file_name, path=GRAPH_PATH)
-                cl_graph = clean_graph(orig_graph)
-                if cl_graph.number_of_nodes() < min_nodes_count:
+                #cl_graph = clean_graph(orig_graph)
+                cl_graph = orig_graph
+                if cl_graph.number_of_nodes() < 5: # Пропускаємо графи з малою кількістю вузлів, які точно не релевантні
                     continue
                 graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURION_', 'DURATION_E', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'duration_work', 'duration_work_E'], date_attrs=['doc_createdate', 'DateSentSO', 'DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_', 'first_view'], default_numeric=0, default_date='2000-01-01T00:00:00.0' )
                 del orig_graph
@@ -92,7 +93,7 @@ def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
                 else:
                     save_graph(graph, f"{original_id}_{graph_file_name}", variation_path)
                     #visualize_graph_with_dot(graph, join_path([variation_path, f"{original_id}_{graph_file_name}"]))
-                    del graph
+                    #del graph
                     new_variations.append({
                         'id': original_id,
                         'doc_id': doc_id,
@@ -103,7 +104,8 @@ def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
                         'doc_info': doc_info  # Збереження параметрів документа
                     })
                     logger.info(f"Збережено оригінальний граф {graph_file_name}.")
-
+                if cl_graph.number_of_nodes() < min_nodes_count:    #   Пропускаємо графи з малою кількістю вузлів, які не бажані для генерації варіацій
+                    continue
                 # Наступні варіації — модифікації або аномалії
                 for _ in range(variations_for_this_graph - 1):  # -1, бо оригінал уже враховано
                     new_id = str(uuid.uuid4())

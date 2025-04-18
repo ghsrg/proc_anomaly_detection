@@ -24,11 +24,31 @@ class TGATLayer(nn.Module):
     def forward(self, x, edge_index):
         return self.att(x, edge_index)
 
+class TemporalEncoding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x, t):
+        pe = torch.zeros_like(x)
+        position = t.unsqueeze(1)
+        max_len = x.size(1)
+        div_term = torch.exp(torch.arange(0, max_len, 2, dtype=torch.float, device=x.device) *
+                             -(torch.log(torch.tensor(10000.0)) / max_len))
+
+        sin_term = torch.sin(position * div_term)
+        cos_term = torch.cos(position * div_term)
+
+        pe[:, 0::2] = sin_term[:, :pe[:, 0::2].shape[1]]
+        pe[:, 1::2] = cos_term[:, :pe[:, 1::2].shape[1]]
+        return x + pe
 class TGAT_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None):
         super(TGAT_pr, self).__init__()
         self.conv1 = TGATLayer(input_dim, hidden_dim)
         self.conv2 = TGATLayer(hidden_dim, hidden_dim)
+        self.temporal_encoding = TemporalEncoding(input_dim)
+
 
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.bn2 = nn.BatchNorm1d(hidden_dim)
@@ -45,6 +65,12 @@ class TGAT_pr(nn.Module):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         edge_attr = getattr(data, 'edge_features', None)
         doc_features = getattr(data, 'doc_features', None)
+        timestamps = getattr(data, 'timestamps', None)
+
+        if timestamps is not None:
+            x = self.temporal_encoding(x, timestamps)
+        else:
+            logger.warning("Відсутні часові мітки для фічеризації графа.")
 
         x = self.activation(self.conv1(x, edge_index))
         x = self.activation(self.bn1(x))
@@ -72,8 +98,7 @@ def simplify_bpmn_id(raw_id: str) -> str:
 
 def prepare_data(normal_graphs):
     """
-    Prepares data for GNN prediction (next activity and time).
-
+    Prepares data for GNN prediction (next activity and time) with TGAT timestamps variant 3.
     :param normal_graphs: Registry of normal graphs.
     :return: List of Data objects for GNN.
     """
@@ -81,27 +106,20 @@ def prepare_data(normal_graphs):
     max_features = 0
     max_doc_dim = 0
 
-    # Визначає числові атрибути вузлів та ребер для подальшої фічеризації
     def infer_graph_attributes(graph):
-        numeric_attrs = set()
-        global_attrs = set()
-        edge_attrs = set()
-
+        numeric_attrs, global_attrs, edge_attrs = set(), set(), set()
         for _, node_data in graph.nodes(data=True):
             for attr, value in node_data.items():
                 if isinstance(value, (int, float)):
                     numeric_attrs.add(attr)
-                elif node_data.get("type") == "startEvent": # якщо глобальні атрибути додані в startEvent
+                elif node_data.get("type") == "startEvent":
                     global_attrs.add(attr)
-
         for _, _, edge_data in graph.edges(data=True):
             for attr, value in edge_data.items():
                 if isinstance(value, (int, float)):
                     edge_attrs.add(attr)
-
         return list(numeric_attrs), list(global_attrs), list(edge_attrs)
 
-    # Перетворює словник з атрибутами документа на числовий вектор
     def transform_doc(doc_info, selected_doc_attrs):
         doc_features = []
         for attr in selected_doc_attrs:
@@ -112,91 +130,60 @@ def prepare_data(normal_graphs):
                 doc_features.append(0.0)
         return torch.tensor(doc_features, dtype=torch.float)
 
-    # Основна функція перетворення графа на об'єкт Data для GNN
     def transform_graph(graph, current_nodes, next_node, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
-
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
-
         nonlocal max_features
 
         if graph.number_of_edges() == 0:
-            logger.warning("Граф без зв'язків. Пропущено.")
             return None
 
-        node_features = []
-        active_mask = []   # маркує поточні активні вузли (вже виконані)
-        next_mask = []     # мітки — вузли, які мають бути наступними
-
-        for node_id, node_data in graph.nodes(data=True): # виконуєм фічеризацію вузлів графа
+        node_features, active_mask, timestamps = [], [], []
+        for node_id, node_data in graph.nodes(data=True):
             features = [
                 float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
                 for attr in node_attrs
             ]
             node_features.append(features)
             active_mask.append(1.0 if node_id in current_nodes else 0.0)
+            # TGAT timestamp: only meaningful for active nodes, others marked as large future time
+            t = float(node_data.get("START_TIME_", 0.0))
+            timestamps.append(t if node_id in current_nodes else 1.1)
 
-        # Формування матриці ознак вузлів + маска активних
         x = torch.tensor(node_features, dtype=torch.float)
         active_mask = torch.tensor(active_mask, dtype=torch.float).view(-1, 1)
-        x = torch.cat([x, active_mask], dim=1)  # додаємо маркер активності
+        x = torch.cat([x, active_mask], dim=1)
 
         if x.shape[1] > 0:
             max_features = max(max_features, x.shape[1])
-        if torch.isnan(x).any():
-            logger.warning(f"Node features contain nan: {x}")
 
-        # Побудова зв'язків (ребер)
         edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
         edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
 
-        # Обробка атрибутів ребер
-        edge_attr = None
-        if edge_attrs:
-            edge_attr = torch.tensor(
-                [
-                    [
-                        float(edge_data.get(attr, 0)) if isinstance(edge_data.get(attr), (int, float)) else 0.0
-                        for attr in edge_attrs
-                    ]
-                    for _, _, edge_data in graph.edges(data=True)
-                ],
-                dtype=torch.float
-            )
+        edge_attr = torch.tensor([
+            [float(edge_data.get(attr, 0)) for attr in edge_attrs]
+            for _, _, edge_data in graph.edges(data=True)
+        ], dtype=torch.float) if edge_attrs else None
 
         if edge_attr is None or edge_attr.shape[0] != edge_index.shape[1]:
             edge_attr = torch.zeros((edge_index.shape[1], len(edge_attrs) if edge_attrs else 1), dtype=torch.float)
 
-        if torch.isnan(edge_attr).any():
-            logger.warning(f"Edge attributes contain nan: {edge_attr}")
-
-        if edge_index.ndim < 2 or edge_index.shape[1] == 0:
-            raise ValueError("edge_index має некоректну форму.")
-        if edge_attr.shape[0] != edge_index.shape[1]:
-            raise ValueError(
-                f"edge_attr size {edge_attr.shape[0]} не відповідає кількості зв'язків {edge_index.shape[1]}.")
-
         doc_features = transform_doc(doc_info, selected_doc_attrs)
-
-        time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)],
-                                   dtype=torch.float) if next_node else None
-
-        #inverse_node_map = list(graph.nodes())  # список ID у правильному порядку
+        time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)], dtype=torch.float) if next_node else None
         inverse_node_map = [simplify_bpmn_id(n) for n in graph.nodes()]
-        #inverse_node_map = [graph.nodes[n].get("name", n) for n in graph.nodes()]
 
         data = Data(
-            x=x, # фічі вузлів з ознаклю активності та ознаклю настпних вузлів
-            edge_index=edge_index, # зв'язки між вузлами
-            edge_attr=edge_attr, # фічі зв'язків
-            y=torch.tensor([node_map[next_node]], dtype=torch.long) if next_node else None,  # мітка — вузел, який буде виконаний наступним
-            doc_features=doc_features, # фічі документа
-            time_target=time_target, # тривалість виконання наступного вузла
-            node_ids=inverse_node_map   # додаємо словник для відновлення оригінального node_id
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            y=torch.tensor([node_map[next_node]], dtype=torch.long) if next_node else None,
+            doc_features=doc_features,
+            time_target=time_target,
+            node_ids=inverse_node_map,
+            timestamps=torch.tensor(timestamps, dtype=torch.float)
         )
 
         return data
 
-    # Обрані атрибути вузлів, ребер та документа
     selected_node_attrs = [
         "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "user_compl_login",
         "SEQUENCE_COUNTER_", "taskaction_code", "task_status"
@@ -207,7 +194,6 @@ def prepare_data(normal_graphs):
         "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
     ]
 
-    # Проходимо по всіх графах і будуємо окремі приклади для кожного кроку процесу
     for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів", total=len(normal_graphs)):
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
@@ -219,22 +205,17 @@ def prepare_data(normal_graphs):
         graph.graph["global_attrs"] = global_attrs
         graph.graph["edge_attrs"] = edge_attrs
 
-        # Визначаємо вузли, які вже були виконані (SEQUENCE_COUNTER_ > 0)
         executed = [n for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > 0]
         if not executed:
             continue
 
-        # Створюємо кроки навчання: які вузли виконані, які будуть наступними
         for i in range(1, len(executed) + 1):
             current_nodes = executed[:i]
             executed_seq = [graph.nodes[n].get("SEQUENCE_COUNTER_", 0) for n in current_nodes]
             max_seq = max(executed_seq)
-
-            # шукаємо вузол з SEQUENCE_COUNTER_ > max_seq по всьому графу
             candidates = [n for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > max_seq]
             if not candidates:
                 continue
-
             next_node = min(candidates, key=lambda n: graph.nodes[n]["SEQUENCE_COUNTER_"])
 
             data = transform_graph(graph, current_nodes, next_node, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
@@ -243,6 +224,7 @@ def prepare_data(normal_graphs):
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
     return data_list, max_features, max_doc_dim
+
 
 def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
     model.train()
@@ -260,6 +242,7 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
         edge_index = torch.cat([item.edge_index for item in batch], dim=1)
         edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
         doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+        timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], 'timestamps') else None
 
         y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
         y_time = torch.stack([item.time_target for item in batch]).view(-1)
@@ -276,7 +259,8 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
                 "edge_index": edge_index,
                 "edge_features": edge_attr,
                 "batch": batch_tensor,
-                "doc_features": doc_features
+                "doc_features": doc_features,
+                "timestamps": timestamps
             })
         )
 
@@ -312,6 +296,8 @@ def calculate_statistics(model, val_data, top_k=3):
         edge_index = torch.cat([item.edge_index for item in val_data], dim=1)
         edge_attr = torch.cat([item.edge_attr for item in val_data], dim=0) if val_data[0].edge_attr is not None else None
         doc_features = torch.stack([item.doc_features for item in val_data], dim=0) if val_data[0].doc_features is not None else None
+        timestamps = torch.cat([item.timestamps for item in val_data], dim=0) if hasattr(val_data[0], 'timestamps') else None
+
         y_task = torch.tensor([item.y.item() for item in val_data], dtype=torch.long)
         y_time = torch.stack([item.time_target for item in val_data]).view(-1)
 
@@ -325,7 +311,8 @@ def calculate_statistics(model, val_data, top_k=3):
             "edge_index": edge_index,
             "edge_features": edge_attr,
             "batch": batch_tensor,
-            "doc_features": doc_features
+            "doc_features": doc_features,
+            "timestamps": timestamps
         })
 
         # Прогнозуємо
