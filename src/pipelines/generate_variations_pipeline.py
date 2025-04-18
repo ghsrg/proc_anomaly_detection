@@ -13,12 +13,13 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-def generate_variations(total_count, anomaly_type=None):
+def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
     """
        Генерує варіації графів (нормальних або аномальних) і фіксує їх у реєстрі.
 
        :param total_count: Загальна кількість графів для генерації.
        :param anomaly_type: Тип аномалії (якщо None, генеруються нормальні графи).
+       :param min_nodes_count: Мінімальна кількість вузлів у графі для обробки.
        """
     try:
         graph_register = load_register('graph_register')  # Реєстр реальних графів
@@ -60,7 +61,7 @@ def generate_variations(total_count, anomaly_type=None):
                 # Завантаження оригінального графа
                 orig_graph = load_graph(file_name=graph_file_name, path=GRAPH_PATH)
                 cl_graph = clean_graph(orig_graph)
-                if cl_graph.number_of_nodes() < 5:
+                if cl_graph.number_of_nodes() < min_nodes_count:
                     continue
                 graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURION_', 'DURATION_E', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'duration_work', 'duration_work_E'], date_attrs=['doc_createdate', 'DateSentSO', 'DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_', 'first_view'], default_numeric=0, default_date='2000-01-01T00:00:00.0' )
                 del orig_graph

@@ -65,6 +65,15 @@ def run_learning_mode(args):
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
             train_model_pr(model_type=model_type, resume=False, checkpoint='',
                         data_file=data_file)
+        elif action == "resume_pr":
+        # Продовжити навчання з контрольної точки
+            if not checkpoint_path:
+                logger.error("Контрольна точка не вказана.")
+                return
+
+            logger.info(f"Продовження навчання з контрольної точки: {checkpoint_path}.")
+            train_model_pr(model_type=model_type, resume=True, checkpoint=checkpoint_path,
+                        data_file=data_file)
 
         else:
             logger.error(f"Невідомий тип дії навчання: {action}. Доступні дії: start, resume, retrain.")

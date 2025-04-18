@@ -38,7 +38,9 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
         'FPR': ('val_fpr', 'pink', 0.5),
         'FNR': ('val_fnr', 'cyan', 0.5),
         'ACC': ('val_accuracy', 'orange',  2.5),
-        'Top K Accuracy': ('val_top_k_accuracy', 'purple',  2.5)
+        'MAE': ('val_mae', 'purple', 0.5),
+        'RMSE': ('val_rmse', 'red', 2.5),
+        'R2': ('val_r2', 'brown', 1)
     }
 
     num_epochs = len(stats['epochs'])
@@ -169,7 +171,6 @@ def visualize_distribution(distribution_data, file_path):
     plt.savefig(file_path, dpi=100)
     plt.close()
 
-
 def plot_confusion_matrix(true_labels, predicted_labels, class_labels, file_path=None, normalize=False):
     """
     Візуалізує Confusion Matrix.
@@ -197,7 +198,6 @@ def plot_confusion_matrix(true_labels, predicted_labels, class_labels, file_path
         plt.close()
     else:
         plt.show()
-
 
 def visualize_graph_with_dot(graph, file_path=None):
     """
@@ -426,94 +426,6 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
         plt.close()
         # Також зберігаємо з актуальною top_k матрицею
         save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
-    else:
-        plt.show()
-
-
-
-def visualize_confusion_matrix_bk2(confusion_matrix_object, class_labels=None, file_path=None, top_k=None):
-    """
-    Візуалізує матрицю плутанини з опціональним скороченням до top_k найчастіших класів.
-
-    :param confusion_matrix_object: або dict з true/predicted labels, або готова матриця
-    :param class_labels: список міток класів
-    :param file_path: шлях для збереження (або None для показу)
-    :param top_k: кількість найчастіших класів для відображення (опціонально)
-    """
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import numpy as np
-    from sklearn.metrics import confusion_matrix
-
-    if isinstance(confusion_matrix_object, dict):
-        true_labels = confusion_matrix_object["true_labels"]
-        predicted_labels = confusion_matrix_object["predicted_labels"]
-        cm = confusion_matrix(true_labels, predicted_labels)
-    else:
-        cm = confusion_matrix_object
-        true_labels = list(range(cm.shape[0]))
-        predicted_labels = list(range(cm.shape[1]))
-
-    if class_labels is None:
-        class_labels = [str(i) for i in range(cm.shape[0])]
-
-    # Обмеження top_k
-    if top_k is not None and top_k < cm.shape[0]:
-        # Обчислюємо частоту кожного класу
-        freq = np.diag(cm)
-        top_k_indices = np.argsort(freq)[::-1][:top_k]
-        cm = cm[np.ix_(top_k_indices, top_k_indices)]
-        class_labels = [class_labels[i] for i in top_k_indices]
-
-    plt.figure(figsize=(min(1 + 0.5 * len(class_labels), 20), min(1 + 0.5 * len(class_labels), 18)))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_labels, yticklabels=class_labels)
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
-    plt.tight_layout()
-
-    if file_path:
-        plt.savefig(file_path, dpi=100)
-        plt.close()
-    else:
-        plt.show()
-
-
-
-def visualize_confusion_matrix_bk1(confusion_matrix_object, class_labels, file_path=None):
-    """
-    Візуалізує матрицю плутанини.
-
-    :param confusion_matrix_object: Або dict із true/predicted labels, або np.ndarray.
-    :param class_labels: Список міток класів.
-    :param file_path: Шлях для збереження (або None для показу).
-    """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    from sklearn.metrics import confusion_matrix
-
-    # Визначаємо, чи це словник (старий формат), чи вже матриця (новий формат)
-    if isinstance(confusion_matrix_object, dict):
-        true_labels = confusion_matrix_object["true_labels"]
-        predicted_labels = confusion_matrix_object["predicted_labels"]
-        cm = confusion_matrix(true_labels, predicted_labels)
-    elif isinstance(confusion_matrix_object, np.ndarray):
-        cm = confusion_matrix_object
-    else:
-        raise ValueError("confusion_matrix_object має бути словником або np.ndarray")
-
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                xticklabels=class_labels, yticklabels=class_labels)
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
-    plt.tight_layout()
-
-    if file_path:
-        plt.savefig(file_path, dpi=100)
-        plt.close()
     else:
         plt.show()
 

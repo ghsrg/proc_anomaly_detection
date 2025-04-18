@@ -6,9 +6,10 @@ from src.utils.visualizer import save_training_diagram, visualize_distribution, 
 from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
-import torch  # Для роботи з GPU
+import torch
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
-import src.core.core_pr_gnn as gnn_pr_core
+import src.core.core_GATConv_pr as GATConv_pr_core
 #import src.core.core_rnn as rnn_core
 #import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer
@@ -25,7 +26,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "GNNPredictor": ( gnn_pr_core)#,
+    "GATConv_pr": (GATConv_pr_core)#,
   #  "RNN": ( rnn_core),
   #  "CNN": ( cnn_core),
   #  "Transformer": (transformer),
@@ -42,12 +43,12 @@ def train_model_pr(
     resume=False,
     checkpoint=None,
     data_file=None,
-    num_epochs=51,
+    num_epochs=80,
     split_ratio=(0.7, 0.2, 0.1),
-    learning_rate=0.001,
+    learning_rate=0.002,
     batch_size=64,
     hidden_dim=64,
-    patience=10,  # Кількість епох без покращення перед зупинкою
+    patience=6,  # Кількість епох без покращення перед зупинкою
     delta=1e-4  # Мінімальне покращення, яке вважається значущим
 ):
     """
@@ -87,7 +88,6 @@ def train_model_pr(
                 raise ValueError("Реєстри нормалізованих графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
             data, input_dim, doc_dim = core_module.prepare_data(normal_graphs)
-            #print(doc_dim)
             # Збереження підготовлених даних
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
@@ -103,22 +103,22 @@ def train_model_pr(
         else:
             edge_dim = None  # Якщо зв'язків немає або вони не використовуються
 
-        # Ініціалізація моделі з динамічним input_dim
+        # Ініціалізація моделі
         model_class = getattr(core_module, model_type, None)
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-
         model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=400, doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
 
-
         # Оптимізатор
         optimizer = core_module.create_optimizer(model, learning_rate)
+        scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, threshold=1e-3, verbose=True)
 
         stats = {
             "epochs": [], "train_loss": [], "spend_time": [],
-            "val_accuracy": [], "val_top_k_accuracy": [], "val_precision": [], "val_recall": [], "val_f1_score": []
+            "val_accuracy": [], "val_top_k_accuracy": [], "val_precision": [], "val_recall": [], "val_f1_score": [],
+             "val_mae": [], "val_rmse": [], "val_r2": []
             }
         test_stats = {}
 
@@ -162,11 +162,20 @@ def train_model_pr(
             stats["val_precision"].append(val_stats.get("precision", 0))
             stats["val_recall"].append(val_stats.get("recall", 0))
             stats["val_f1_score"].append(val_stats.get("f1_score", 0))
+            stats["val_mae"].append(val_stats.get("mae", 0))
+            stats["val_rmse"].append(val_stats.get("rmse", 0))
+            stats["val_r2"].append(val_stats.get("r2", 0))
 
             eph_end_time = datetime.now()
             eph_training_duration = eph_end_time - start_time
             stats["spend_time"].append(eph_training_duration.total_seconds())
             logger.info(f"Статистика валідації: {val_stats}")
+
+            if "accuracy" in val_stats:
+                #print(val_stats["accuracy"])
+                scheduler.step(val_stats["accuracy"])
+            #for param_group in optimizer.param_groups:
+                #print("Current learning rate:", param_group['lr'])
 
             # Перевірка Early Stopping
             if train_loss < best_val_loss - delta:
@@ -230,12 +239,12 @@ def train_model_pr(
         logger.info(f"Тривалість навчання: {training_duration}")
         test_stats = core_module.calculate_statistics(model, test_data)
         # Збереження фінальної статистики з тестуванням
-        save_training_diagram(stats,
-                              f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",
-                              test_stats, title=f"{model_type} Training and Validation Metrics")
+        #save_training_diagram(stats,
+        #                      f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",
+        #                      test_stats, title=f"{model_type} Training and Validation Metrics")
 
         stats["epochs"].append('Testing')
-        stats["train_loss"].append('')
+        stats["train_loss"].append(train_loss)
         stats["val_accuracy"].append(test_stats["accuracy"])
         stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
         stats["val_precision"].append(test_stats.get("precision", 0))

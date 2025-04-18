@@ -6,29 +6,37 @@ from src.utils.file_utils import join_path, load_graph
 from sklearn.metrics import precision_score,accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from src.config.config import NORMALIZED_PR_NORMAL_GRAPH_PATH, LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
 from src.utils.logger import get_logger
+import re
 from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class GNNPredictor(nn.Module):
+class GATConv_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None):
-        super(GNNPredictor, self).__init__()
+        super(GATConv_pr, self).__init__()
         task_output_dim, time_output_dim = output_dim, output_dim
 
         self.conv1 = GATConv(input_dim, hidden_dim)
         self.conv2 = GATConv(hidden_dim, hidden_dim)
         self.conv3 = GATConv(hidden_dim, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
+        self.bn3 = nn.BatchNorm1d(hidden_dim)
+
+        self.dropout = nn.Dropout(p=0.3)
 
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
         self.global_pool = global_mean_pool
         self.activation = nn.ReLU()
-
-        self.task_head = nn.Linear(hidden_dim * 2, task_output_dim)
-        self.time_head = nn.Linear(hidden_dim * 2, 1)
+        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.bnf = nn.BatchNorm1d(hidden_dim * 2)
+        self.task_head = nn.Linear(hidden_dim, output_dim)
+        self.time_head = nn.Linear(hidden_dim, 1)
+        #self.task_head = nn.Linear(hidden_dim * 2, task_output_dim)
+        #self.time_head = nn.Linear(hidden_dim * 2, 1)
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
-        #x, edge_index, batch = data.x, data.edge_index, data.batch
 
         edge_attr = getattr(data, 'edge_features', None)
         #edge_attr = getattr(data, 'edge_attr', None)
@@ -36,8 +44,17 @@ class GNNPredictor(nn.Module):
         doc_features = getattr(data, 'doc_features', None)
 
         x = self.activation(self.conv1(x, edge_index, edge_attr))
+#        x = self.bn1(x)
+#        x = self.activation(x)
+#        x = self.dropout(x)
         x = self.activation(self.conv2(x, edge_index, edge_attr))
-        x = self.activation(self.conv3(x, edge_index, edge_attr))
+        x = self.bn2(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+        #x = self.activation(self.conv3(x, edge_index, edge_attr))
+        #x = self.bn3(x)
+        #x = self.activation(x)
+        #x = self.dropout(x)
         x = self.global_pool(x, batch)
 
         if doc_features is not None:
@@ -46,9 +63,16 @@ class GNNPredictor(nn.Module):
             doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
 
         x = torch.cat([x, doc_emb], dim=1)
+        x = self.bnf(x)
+        x = self.activation(self.fusion_head(x))
+        x = self.dropout(x)
         task_output = self.task_head(x)
         time_output = self.time_head(x)
         return task_output, time_output
+
+def simplify_bpmn_id(raw_id: str) -> str:
+    match = re.match(r'^([^_]+_[^_]+)', raw_id)
+    return match.group(1) if match else raw_id
 
 def prepare_data(normal_graphs):
     """
@@ -160,7 +184,9 @@ def prepare_data(normal_graphs):
         time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)],
                                    dtype=torch.float) if next_node else None
 
-        inverse_node_map = list(graph.nodes())  # список ID у правильному порядку
+        #inverse_node_map = list(graph.nodes())  # список ID у правильному порядку
+        inverse_node_map = [simplify_bpmn_id(n) for n in graph.nodes()]
+        #inverse_node_map = [graph.nodes[n].get("name", n) for n in graph.nodes()]
 
         data = Data(
             x=x, # фічі вузлів з ознаклю активності та ознаклю настпних вузлів
@@ -176,8 +202,8 @@ def prepare_data(normal_graphs):
 
     # Обрані атрибути вузлів, ребер та документа
     selected_node_attrs = [
-        "DURATION_", "START_TIME_", "END_TIME_", "active_executions",
-        "SEQUENCE_COUNTER_", "overdue_work", "duration_work"
+        "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "user_compl_login",
+        "SEQUENCE_COUNTER_", "taskaction_code", "task_status"
     ]
     selected_edge_attrs = ["DURATION_E"]
     selected_doc_attrs = [
@@ -222,7 +248,7 @@ def prepare_data(normal_graphs):
 
     return data_list, max_features, max_doc_dim
 
-def train_epoch(model, data, optimizer, batch_size=24, alpha=0.50):
+def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
@@ -272,6 +298,10 @@ def calculate_statistics(model, val_data, top_k=3):
     model.eval()
     all_preds = []
     all_labels = []
+    all_pred_ids = []
+    all_true_ids = []
+    time_preds = []
+    time_labels = []
 
     with torch.no_grad():
         # Формуємо батч вручну із усіх об'єктів у data_loader
@@ -286,10 +316,11 @@ def calculate_statistics(model, val_data, top_k=3):
         edge_attr = torch.cat([item.edge_attr for item in val_data], dim=0) if val_data[0].edge_attr is not None else None
         doc_features = torch.stack([item.doc_features for item in val_data], dim=0) if val_data[0].doc_features is not None else None
         y_task = torch.tensor([item.y.item() for item in val_data], dtype=torch.long)
+        y_time = torch.stack([item.time_target for item in val_data]).view(-1)
 
         # Усі node_ids у порядку побудови батчу
         #node_ids_full = sum([item.id_map for item in val_data], [])
-        node_ids_full = [node_id for item in val_data for node_id in item.id_map]
+        node_ids_full = [node_id for item in val_data for node_id in item.node_ids]
 
         # Створюємо об'єкт батчу
         data = type("Batch", (object,), {
@@ -301,7 +332,7 @@ def calculate_statistics(model, val_data, top_k=3):
         })
 
         # Прогнозуємо
-        task_logits, _ = model(data)
+        task_logits, time_output  = model(data)
         preds = torch.argmax(task_logits, dim=1)
 
         all_preds.extend(preds.cpu().numpy())
@@ -317,12 +348,22 @@ def calculate_statistics(model, val_data, top_k=3):
         topk_hits = [label in pred_row for label, pred_row in zip(all_labels, topk_preds)]
         top_k_accuracy = sum(topk_hits) / len(topk_hits)
 
+        # Статистика по часу
+        time_preds = time_output.view(-1).cpu().numpy()
+        time_labels = y_time.cpu().numpy()
+
+    # Класифікаційні метрики
     precision = precision_score(all_labels, all_preds, average='macro')
     recall = recall_score(all_labels, all_preds, average='macro')
     f1 = f1_score(all_labels, all_preds, average='macro')
     acc = accuracy_score(all_labels, all_preds)
     cm = confusion_matrix(all_labels, all_preds)
 
+    # Регресійні метрики
+    mae = mean_absolute_error(time_labels, time_preds)
+    mse = mean_squared_error(time_labels, time_preds)
+    rmse = mse ** 0.5
+    r2 = r2_score(time_labels, time_preds)
 
     return {
         "accuracy": acc,
@@ -332,7 +373,10 @@ def calculate_statistics(model, val_data, top_k=3):
         "f1_score": f1,
         "confusion_matrix": cm,
         "true_node_ids": all_true_ids,
-        "pred_node_ids": all_pred_ids
+        "pred_node_ids": all_pred_ids,
+        "mae": mae,
+        "rmse": rmse,
+        "r2": r2
     }
 
 def calculate_time_statistics(model, data_loader, device):
