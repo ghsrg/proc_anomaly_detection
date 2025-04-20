@@ -34,6 +34,8 @@ def main():
                             help="Кількість згенерованих аномальних графів duplicate_steps")
         parser.add_argument("--data_file", type=str,
                             help="Посилання на файл з підготовленими даними ")
+        parser.add_argument("--pr_mode", type=str,
+                            help="Тип prediction: bpmn or log ")
         args = parser.parse_args()
 
         # Вибір режиму роботи

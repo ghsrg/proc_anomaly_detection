@@ -31,8 +31,10 @@ def run_learning_mode(args):
         model_type = args.model_type
         anomaly_type = args.anomaly_type
         action = args.action
+        pr_mode = args.pr_mode
         checkpoint_path = args.checkpoint  # GNN_missing_steps_epoch_20
-        data_file = args.data_file or f"data_{model_type}_{anomaly_type}" # prepared_data
+
+        data_file = args.data_file or f"data_{model_type}_{anomaly_type if anomaly_type else pr_mode}" # prepared_data
 
         logger.info(f"Запуск режиму навчання для моделі {model_type} з аномалією {anomaly_type}.")
 
@@ -64,7 +66,8 @@ def run_learning_mode(args):
             # Почати навчання з початку для PREDICTION
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
             train_model_pr(model_type=model_type, resume=False, checkpoint='',
-                        data_file=data_file)
+                        data_file=data_file, args=args)
+
         elif action == "resume_pr":
         # Продовжити навчання з контрольної точки
             if not checkpoint_path:
@@ -73,7 +76,7 @@ def run_learning_mode(args):
 
             logger.info(f"Продовження навчання з контрольної точки: {checkpoint_path}.")
             train_model_pr(model_type=model_type, resume=True, checkpoint=checkpoint_path,
-                        data_file=data_file)
+                        data_file=data_file, args=args)
 
         else:
             logger.error(f"Невідомий тип дії навчання: {action}. Доступні дії: start, resume, retrain.")

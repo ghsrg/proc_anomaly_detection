@@ -375,6 +375,12 @@ def create_optimizer(model, learning_rate=0.001):
     #return Adam(model.parameters(), lr=learning_rate)
     return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
+class CustomData(Data):
+    def __inc__(self, key, value, *args, **kwargs):
+        if key == 'edge_index':
+            return self.x.size(0)
+        return super().__inc__(key, value, *args, **kwargs)
+
 def prepare_data_log_only(normal_graphs):
     """
     Формує дані для GNN, використовуючи лише інформацію з логів виконання (SEQUENCE_COUNTER_).

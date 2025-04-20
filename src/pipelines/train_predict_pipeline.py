@@ -51,7 +51,8 @@ def train_model_pr(
     batch_size=64,
     hidden_dim=64,
     patience=6,  # Кількість епох без покращення перед зупинкою
-    delta=1e-4  # Мінімальне покращення, яке вважається значущим
+    delta=1e-4,  # Мінімальне покращення, яке вважається значущим
+    args=None
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -72,6 +73,7 @@ def train_model_pr(
 
         core_module = MODEL_MAP[model_type]
 
+        pr_mode = args.pr_mode
         data = None
         input_dim = None
         if data_file:  # Спроба завантажити підготовлені дані
@@ -89,7 +91,12 @@ def train_model_pr(
             if normal_graphs.empty:
                 raise ValueError("Реєстри нормалізованих графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
-            data, input_dim, doc_dim = core_module.prepare_data(normal_graphs)
+            if pr_mode == 'bpmn':
+                data, input_dim, doc_dim = core_module.prepare_data(normal_graphs)
+            elif    pr_mode == 'logs':
+                data, input_dim, doc_dim = core_module.prepare_data_log_only(normal_graphs)
+            else:
+                raise ValueError(f"Невірний режим підготовки даних pr_mode: {pr_mode} (bpms/logs)")
             # Збереження підготовлених даних
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
             save_prepared_data(data, input_dim, doc_dim, data_path)
@@ -184,7 +191,7 @@ def train_model_pr(
                 best_val_loss = train_loss
                 epochs_no_improve = 0
                 # Можна зберігати найкращу модель
-                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_best.pt"
+                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_best.pt"
                 save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
                                 file_path=checkpoint_path, stats=stats)
             else:
@@ -192,7 +199,7 @@ def train_model_pr(
                 #logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
 
             # Збереження контрольної точки
-            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_epoch_{epoch + 1}.pt"
+            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Тестування після кожної епохи
@@ -201,12 +208,12 @@ def train_model_pr(
 
             # Збереження статистики та візуалізація після кожної епохи
             #file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_epoch_{epoch + 1}.png"
-            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_dim-{hidden_dim}_bs-{batch_size}.png"
+            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_dim-{hidden_dim}_bs-{batch_size}.png"
             save_training_diagram(stats,
                                   file_path,
                                   test_stats, title=f"{model_type} Training and Validation Metrics")
             # Збереження матриці плутанини
-            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_CM.png"
+            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_CM.png"
             # Візуалізація матриці плутанини
 
             visualize_confusion_matrix(
@@ -216,7 +223,7 @@ def train_model_pr(
                 top_k=('best', 50),
                 true_node_ids=val_stats.get("true_node_ids")
             )
-            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_CM_worst.png"
+            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_CM_worst.png"
 
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
@@ -226,7 +233,7 @@ def train_model_pr(
                 true_node_ids=val_stats.get("true_node_ids")
             )
 
-            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
+            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_statistics'])
             save2csv(stats, stat_path)
 
             # Зупинка навчання
