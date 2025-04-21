@@ -1,7 +1,9 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+import matplotlib.cm as cm
 import numpy as np
+from collections import defaultdict
 
 from src.utils.logger import get_logger
 from src.utils.graph_utils import clean_graph
@@ -318,6 +320,49 @@ def visualize_graph_with_dot(graph, file_path=None):
         print(f"Граф збережено у {file_path}")
     else:
         plt.show()
+
+def visualize_graph_heatmap(graph: nx.DiGraph, cm_matrix: np.ndarray, class_labels: list[str], normalize: bool = True, figsize=(12, 8)):
+    """
+    Візуалізує граф із підсвічуванням вузлів відповідно до частоти помилок у матриці плутанини.
+
+    :param graph: граф типу networkx.DiGraph
+    :param cm_matrix: матриця плутанини numpy.ndarray
+    :param class_labels: список назв вузлів у тому ж порядку, що й у cm_matrix
+    :param normalize: нормалізувати чи абсолютні значення
+    :param figsize: розмір фігури
+    """
+    node_errors = defaultdict(int)
+    for i in range(len(cm_matrix)):
+        node_name = class_labels[i]
+        errors = sum(cm_matrix[i]) - cm_matrix[i, i]  # всі передбачення, крім вірних
+        node_errors[node_name] = errors
+
+    # нормалізація
+    if normalize and node_errors:
+        max_error = max(node_errors.values()) or 1
+        node_errors = {k: v / max_error for k, v in node_errors.items()}
+
+    # кольорова карта
+    cmap = cm.Reds
+    node_colors = []
+    for node in graph.nodes():
+        label = str(node)
+        error_score = node_errors.get(label, 0.0)
+        color = cmap(error_score)
+        node_colors.append(color)
+
+    pos = nx.spring_layout(graph)
+    plt.figure(figsize=figsize)
+    nx.draw_networkx_nodes(graph, pos, node_color=node_colors, node_size=800, edgecolors='black')
+    nx.draw_networkx_edges(graph, pos, arrows=True, edge_color="gray")
+    nx.draw_networkx_labels(graph, pos, font_size=8, font_color='black')
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
+    sm.set_array([])
+    plt.colorbar(sm, label="Error Level")
+    plt.title("Graph Node Error Heatmap")
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
 
 
 def visualize_distribution(node_distribution, edge_distribution, file_path=None):

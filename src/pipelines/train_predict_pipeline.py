@@ -41,18 +41,20 @@ MODEL_MAP = {
 }
 
 def train_model_pr(
-    model_type,
+    model_type, # Тип моделі (GATConv_pr, TGAT_pr...)
     resume=False,
-    checkpoint=None,
-    data_file=None,
-    num_epochs=80,
-    split_ratio=(0.7, 0.2, 0.1),
-    learning_rate=0.002,
-    batch_size=72,
-    hidden_dim=64,
+    checkpoint=None,    # Шлях до контрольної точки для відновлення навчання
+    data_file=None,     # Шлях до файлу з підготовленими даними
+    num_epochs=80,  # Кількість епох для навчання
+    split_ratio=(0.7, 0.2, 0.1),    # Частки для розділення даних на train, val, test
+    learning_rate=0.002,    # Початковий рівень навчання
+    batch_size=72,  # Розмір пакету для навчання
+    hidden_dim=64,  # Розмір прихованого шару
     patience=6,  # Кількість епох без покращення перед зупинкою
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
-    args=None
+    args=None,  # Аргументи командного рядка
+    output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
+    fraction=1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -117,7 +119,7 @@ def train_model_pr(
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=470, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
 
         # Оптимізатор
@@ -141,7 +143,7 @@ def train_model_pr(
             start_epoch = start_epoch + 1
 
         # Розділення даних
-        train_data, val_data, test_data = split_data(data, split_ratio, fraction=0.1)
+        train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction)
 
         # Фіксація часу початку навчання
         start_time = datetime.now()
