@@ -3,8 +3,42 @@ import pandas as pd
 import random
 import numpy as np
 
+def split_data(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True, fraction=1.0):
+    """
+    Розділяє дані на навчальну, валідаційну та тестову вибірки, з можливістю обмежити частку.
 
-def split_data(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True):
+    :param data: Список Data-об'єктів.
+    :param split_ratio: Частки (train, val, test), сума має бути 1.0
+    :param shuffle: Чи перемішувати перед розділенням
+    :param fraction: Скільки відсотків даних повернути (0.0 – 1.0)
+    :return: train_data, val_data, test_data
+    """
+    if not np.isclose(sum(split_ratio), 1.0):
+        raise ValueError("Сума split_ratio повинна дорівнювати 1.")
+
+    if shuffle:
+        random.shuffle(data)
+
+    total_count = len(data)
+    train_end = int(total_count * split_ratio[0])
+    val_end = train_end + int(total_count * split_ratio[1])
+
+    train_data = data[:train_end]
+    val_data = data[train_end:val_end]
+    test_data = data[val_end:]
+
+    if fraction < 1.0:
+        def reduce(subset):
+            count = max(1, int(len(subset) * fraction))
+            return subset[:count]
+        train_data = reduce(train_data)
+        val_data = reduce(val_data)
+        test_data = reduce(test_data)
+
+    return train_data, val_data, test_data
+
+
+def split_data_old(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True):
     """
     Розділяє дані на навчальну, валідаційну та тестову вибірки.
 

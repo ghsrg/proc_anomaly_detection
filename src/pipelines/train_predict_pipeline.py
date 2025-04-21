@@ -48,7 +48,7 @@ def train_model_pr(
     num_epochs=80,
     split_ratio=(0.7, 0.2, 0.1),
     learning_rate=0.002,
-    batch_size=64,
+    batch_size=72,
     hidden_dim=64,
     patience=6,  # Кількість епох без покращення перед зупинкою
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
@@ -117,7 +117,7 @@ def train_model_pr(
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=400, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=470, doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
 
         # Оптимізатор
@@ -141,7 +141,7 @@ def train_model_pr(
             start_epoch = start_epoch + 1
 
         # Розділення даних
-        train_data, val_data, test_data = split_data(data, split_ratio)
+        train_data, val_data, test_data = split_data(data, split_ratio, fraction=0.1)
 
         # Фіксація часу початку навчання
         start_time = datetime.now()

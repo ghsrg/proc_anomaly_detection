@@ -66,7 +66,7 @@ def generate_variations(total_count, anomaly_type=None, min_nodes_count=50):
                     continue
                 graph = format_graph_values(cl_graph, numeric_attrs=['active_executions', 'DURION_', 'DURATION_E', 'SEQUENCE_COUNTER_', 'PurchasingBudget', 'InitialPrice', 'FinalPrice', 'duration_work', 'duration_work_E'], date_attrs=['doc_createdate', 'DateSentSO', 'DateAppContract', 'DateAppProcCom', 'DateApprovalProcurementResults', 'DateAppCommAss', 'DateAppFunAss', 'DateApprovalStartProcurement', 'DateApprovalFD', 'DateInWorkKaM', 'DateKTC', 'ExpectedDate', 'END_TIME_', 'START_TIME_', 'first_view'], default_numeric=0, default_date='2000-01-01T00:00:00.0' )
                 del orig_graph
-                del cl_graph
+                #del cl_graph
                 # Розрахунок кількості варіацій для поточного графа
                 variations_for_this_graph = variations_per_graph
                 if current_cycle <= extra_variations:  # Додаткові варіації для перших графів
