@@ -27,17 +27,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "GATConv_pr": (GATConv_pr_core),
-    "TGAT_pr": (TGAT_pr_core)#,
-  #  "RNN": ( rnn_core),
-  #  "CNN": ( cnn_core),
-  #  "Transformer": (transformer),
-  #  "Autoencoder": (autoencoder)
-#ADD new models
-    # "GAT": ( gat),
-    # "VGAE": (vgae)
-    #"TGN"
-    #"CapsNets"
+    "TGAT_pr": (TGAT_pr_core),
+    #TGAT
+    #EvolveGCN
+    #DySAT
+    #T-GCN
+    #GRU-GNN / LSTM-GNN
+    #Temporal GNN
+    #GraphSAGE
+    #MuseGNN
+    #GraphRNN
+    "GATConv_pr": (GATConv_pr_core)#,
+    #GCN
+    #ForwardGNN
+    #DFA-GNN
+
 }
 
 def train_model_pr(
@@ -81,7 +85,7 @@ def train_model_pr(
         if data_file:  # Спроба завантажити підготовлені дані
             #data_path = "/content/drive/MyDrive/prepared_data/data_Transformer_missing_steps.pt"
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
-            data, input_dim, doc_dim = load_prepared_data(data_path)
+            data, input_dim, doc_dim, global_node_dict = load_prepared_data(data_path)
         else:
             data_file = 'prepared_data'
 
@@ -94,14 +98,14 @@ def train_model_pr(
                 raise ValueError("Реєстри нормалізованих графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
             if pr_mode == 'bpmn':
-                data, input_dim, doc_dim = core_module.prepare_data(normal_graphs)
+                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data(normal_graphs)
             elif    pr_mode == 'logs':
-                data, input_dim, doc_dim = core_module.prepare_data_log_only(normal_graphs)
+                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data_log_only(normal_graphs)
             else:
                 raise ValueError(f"Невірний режим підготовки даних pr_mode: {pr_mode} (bpms/logs)")
             # Збереження підготовлених даних
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
-            save_prepared_data(data, input_dim, doc_dim, data_path)
+            save_prepared_data(data, input_dim, doc_dim, global_node_dict, data_path)
         # Переміщення даних на GPU/CPU
         for i in range(len(data)):
             for key, value in data[i].items():
@@ -119,7 +123,7 @@ def train_model_pr(
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=len(global_node_dict), doc_dim=doc_dim, edge_dim=edge_dim)
         model = model.to(device)  # Переміщення моделі на GPU
 
         # Оптимізатор
@@ -129,7 +133,8 @@ def train_model_pr(
         stats = {
             "epochs": [], "train_loss": [], "spend_time": [],
             "val_accuracy": [], "val_top_k_accuracy": [], #"val_precision": [], "val_recall": [], "val_f1_score": [],
-             "val_mae": [], "val_rmse": [], "val_r2": []
+            "val_mae": [], "val_rmse": [], "val_r2": [],
+            "val_out_of_scope_rate": []
             }
         test_stats = {}
 
@@ -166,7 +171,7 @@ def train_model_pr(
             #logger.info(f"Втрати на навчанні: {train_loss}")
 
             # Валідація
-            val_stats = core_module.calculate_statistics(model, val_data)
+            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
             #print(val_stats)
             if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
             if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
@@ -176,6 +181,7 @@ def train_model_pr(
             if "val_mae" in stats: stats["val_mae"].append(val_stats.get("mae", 0))
             if "val_rmse" in stats: stats["val_rmse"].append(val_stats.get("rmse", 0))
             if "val_r2" in stats: stats["val_r2"].append(val_stats.get("r2", 0))
+            if "val_out_of_scope_rate" in stats: stats["val_out_of_scope_rate"].append(val_stats.get("out_of_scope_rate", 0))
 
             eph_end_time = datetime.now()
             eph_training_duration = eph_end_time - start_time
@@ -205,7 +211,7 @@ def train_model_pr(
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Тестування після кожної епохи
-            #test_stats = core_module.calculate_statistics(model, test_data)
+            #test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
             #logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
 
             # Збереження статистики та візуалізація після кожної епохи
@@ -222,8 +228,9 @@ def train_model_pr(
                 confusion_matrix_object=val_stats["confusion_matrix"],
                 #class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
                 file_path=confusion_matrix_path,
-                top_k=('best', 50),
-                true_node_ids=val_stats.get("true_node_ids")
+                top_k=('best', 30),
+                global_node_dict=global_node_dict
+                #true_node_ids=val_stats.get("true_node_ids")
             )
             confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_CM_worst.png"
 
@@ -231,8 +238,9 @@ def train_model_pr(
                 confusion_matrix_object=val_stats["confusion_matrix"],
                 # class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
                 file_path=confusion_matrix_path_w,
-                top_k=('worst', 50),
-                true_node_ids=val_stats.get("true_node_ids")
+                top_k=('worst', 30),
+                global_node_dict=global_node_dict
+                #true_node_ids=val_stats.get("true_node_ids")
             )
 
             stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_statistics'])
@@ -250,7 +258,7 @@ def train_model_pr(
         print(f"Тривалість навчання: {training_duration}")
         logger.info(f"Час завершення навчання: {end_time}")
         logger.info(f"Тривалість навчання: {training_duration}")
-        test_stats = core_module.calculate_statistics(model, test_data)
+        test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
         # Збереження фінальної статистики з тестуванням
         #save_training_diagram(stats,
         #                      f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",

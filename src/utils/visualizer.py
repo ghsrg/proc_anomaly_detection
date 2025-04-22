@@ -43,7 +43,9 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
         'TOP-k-ACC': ('val_top_k_accuracy', 'purple',  1.5),
         'MAE': ('val_mae', 'purple', 0.5),
         'RMSE': ('val_rmse', 'red', 2.5),
-        'R2': ('val_r2', 'brown', 1)
+        'R2': ('val_r2', 'brown', 1),
+        'Out_of_Scope': ('val_out_of_scope_rate', 'peru', 1)
+
     }
 
     num_epochs = len(stats['epochs'])
@@ -405,8 +407,23 @@ def visualize_distribution(node_distribution, edge_distribution, file_path=None)
         plt.show()
 
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from sklearn.metrics import confusion_matrix
+from matplotlib.colors import LogNorm
+
 def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_path=None, top_k=None,
-                                true_node_ids=None):
+                                global_node_dict=None):
+    """
+    Візуалізує матрицю плутанини з опціональним скороченням до top_k найчастіших класів та підписами вузлів.
+
+    :param confusion_matrix_object: dict з true/predicted або готова матриця
+    :param class_labels: список міток класів (опціонально)
+    :param file_path: шлях до файлу для збереження (або None для показу)
+    :param top_k: int або ('best' | 'worst', k)
+    :param global_node_dict: словник {node_name: index} для побудови підписів
+    """
     if isinstance(confusion_matrix_object, dict):
         true_labels = confusion_matrix_object["true_labels"]
         predicted_labels = confusion_matrix_object["predicted_labels"]
@@ -416,57 +433,49 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
         true_labels = list(range(cm.shape[0]))
         predicted_labels = list(range(cm.shape[1]))
 
+    # Формування підписів на основі глобального словника
     if class_labels is None:
-        if true_node_ids is not None:
-            unique_indices = sorted(set(true_labels + predicted_labels))
-            try:
-                class_labels = [
-                    true_node_ids[i][:25] if i < len(true_node_ids) else str(i)
-                    for i in unique_indices
-                ]
-            except Exception as e:
-                print("ERROR mapping class_labels from node_ids:", e)
-                class_labels = [str(i) for i in unique_indices]
+        if global_node_dict is not None:
+            inv_node_dict = {v: k for k, v in global_node_dict.items()}
+            class_labels = [inv_node_dict.get(i, f"Unknown_{i}")[:25] for i in range(cm.shape[0])]
         else:
             class_labels = [str(i) for i in range(cm.shape[0])]
 
-        # Збереження повної матриці перед top_k
+    # Збереження повної версії матриці
     if file_path:
-        save_confusion_matrix_to_csv(cm, class_labels, file_path+ '_full')
+        save_confusion_matrix_to_csv(cm, class_labels, file_path + '_full')
 
-        # Обробка top_k
+    # Top-K скорочення
     if top_k is not None and len(class_labels) == cm.shape[0]:
+        row_sums = np.sum(cm, axis=1)
+        correct = np.diag(cm)
+        mistakes = row_sums - correct
+
         if isinstance(top_k, tuple):
             mode, k = top_k
-            row_sums = np.sum(cm, axis=1)
-            correct = np.diag(cm)
-            mistakes = row_sums - correct
-
             if mode == 'best':
-                top_k_indices = np.argsort(correct)[::-1][:k]  # Найбільше правильних
+                top_k_indices = np.argsort(correct)[::-1][:k]
             elif mode == 'worst':
-                top_k_indices = np.argsort(mistakes)[::-1][:k]  # Найбільше помилок
+                top_k_indices = np.argsort(mistakes)[::-1][:k]
             else:
                 raise ValueError("top_k повинен бути або int, або ('best' | 'worst', k)")
         elif isinstance(top_k, int):
-            correct = np.diag(cm)
-            top_k_indices = np.argsort(correct)[::-1][:top_k]  # Стандартна поведінка
+            top_k_indices = np.argsort(correct)[::-1][:top_k]
         else:
             raise TypeError("top_k повинен бути int або tuple")
 
         cm = cm[np.ix_(top_k_indices, top_k_indices)]
         class_labels = [class_labels[i] for i in top_k_indices]
 
-        # Обрізка назв
+    # Обрізаємо довгі підписи
     class_labels = [label[:25] for label in class_labels]
 
     plt.figure(figsize=(min(1 + 0.5 * len(class_labels), 20), min(1 + 0.5 * len(class_labels), 18)))
     vmax = cm.max()
-    if vmax < 1:
-        norm = None
-    else:
-        norm = LogNorm(vmin=1, vmax=vmax)
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", norm=norm, xticklabels=class_labels, yticklabels=class_labels)
+    norm = LogNorm(vmin=1, vmax=vmax) if vmax >= 1 else None
+
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", norm=norm,
+                xticklabels=class_labels, yticklabels=class_labels)
 
     plt.title("Confusion Matrix")
     plt.xlabel("Predicted Node ID")
@@ -476,10 +485,10 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
     if file_path:
         plt.savefig(file_path, dpi=100)
         plt.close()
-        # Також зберігаємо з актуальною top_k матрицею
         save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
     else:
         plt.show()
+
 
 def visualize_confusion_matrix_bk(confusion_matrix_object, class_labels, file_path=None):
     """

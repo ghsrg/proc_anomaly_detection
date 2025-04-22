@@ -228,14 +228,14 @@ def save_training_progress(register_name, progress_data):
     save_register(register, register_name)
     logger.info(f"Прогрес навчання збережено у реєстр {register_name}.")
 
-def save_prepared_data(data, input_dim, doc_dim, file_path):
+def save_prepared_data(data, input_dim, doc_dim, global_node_dict, file_path):
     """
     Зберігає підготовлені дані у файл.
     :param data_list: Список підготовлених об'єктів Data.
     :param input_dim: Вхідний розмір для моделі.
     :param file_path: Шлях для збереження файлу.
     """
-    torch.save({"data": data, "input_dim": input_dim, "doc_dim": doc_dim}, file_path)
+    torch.save({"data": data, "input_dim": input_dim, "doc_dim": doc_dim, "global_node_dict": global_node_dict}, file_path)
     print(f"Підготовлені дані збережено у {file_path}")
 
 def load_prepared_data(file_path):
@@ -247,10 +247,10 @@ def load_prepared_data(file_path):
     try:
         checkpoint = torch.load(f"{file_path}")
         print(f"Підготовлені дані завантажено з {file_path}")
-        return checkpoint["data"], checkpoint["input_dim"], checkpoint["doc_dim"]
+        return checkpoint["data"], checkpoint["input_dim"], checkpoint["doc_dim"], checkpoint["global_node_dict"]
     except FileNotFoundError:
         print(f"Файл з підготовленими даними не знайдено: {file_path}")
-        return None, None, None
+        return None, None, None, None
 
 def save_statistics_to_json(stats, file_path):
     """
