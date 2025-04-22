@@ -51,12 +51,12 @@ TEST_PR_DIAGRAMS_PATH = join_path([BASE_PR_OUTPUTS_PATH, 'test_diagrams'])
 BASE_NN_MODELS_PATH = join_path(['nn_models'])
 NN_MODELS_CHECKPOINTS_PATH = join_path([BASE_NN_MODELS_PATH, 'checkpoints'])
 NN_MODELS_TRAINED_PATH = join_path([BASE_NN_MODELS_PATH, 'trained'])
-NN_MODELS_DATA_PATH = join_path([BASE_NN_MODELS_PATH, 'input_data'])
+NN_MODELS_DATA_PATH = join_path([BASE_DATA_PATH, 'input_data'])
 
 BASE_PR_NN_MODELS_PATH = join_path(['nn_pr_models'])
 NN_PR_MODELS_CHECKPOINTS_PATH = join_path([BASE_PR_NN_MODELS_PATH, 'checkpoints'])
 NN_PR_MODELS_TRAINED_PATH = join_path([BASE_PR_NN_MODELS_PATH, 'trained'])
-NN_PR_MODELS_DATA_PATH = join_path([BASE_PR_NN_MODELS_PATH, 'input_data'])
+NN_PR_MODELS_DATA_PATH = join_path([BASE_DATA_PATH, 'input_data'])
 
 # Створення необхідних тек, якщо їх немає
 make_dir(LOGS_PATH)
