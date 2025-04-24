@@ -1,5 +1,5 @@
 from src.pipelines.preprocess_pipeline import run_preprocess_pipeline
-from src.pipelines.doc_analysis_pipeline import analyze_documents
+from src.pipelines.doc_analysis_pipeline import gen_graph_from_raw_data
 from src.pipelines.generate_variations_pipeline import generate_variations
 
 from src.utils.logger import get_logger
@@ -24,7 +24,7 @@ def run_preparation_mode(args):
     # Аналіз документів і побудова графів з RAW файлів
     if args.doc2graph:
         logger.info("Генерація первинних графів з документів.")
-        analyze_documents(
+        gen_graph_from_raw_data(
             caption_filter="001 Запит на закупівлю")  # можемо вказати тип документів, який потрібно аналізувати
         #analyze_documents(caption_filter="066 Network scheme")
 

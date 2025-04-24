@@ -485,7 +485,7 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
     if file_path:
         plt.savefig(file_path, dpi=100)
         plt.close()
-        save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
+        #save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
     else:
         plt.show()
 

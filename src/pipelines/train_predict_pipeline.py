@@ -1,9 +1,9 @@
 
 from src.utils.logger import get_logger
-from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, save_statistics_to_json, save2csv
+from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix
-from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
+from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
 import torch
@@ -28,7 +28,6 @@ logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
     "TGAT_pr": (TGAT_pr_core),
-    #TGAT
     #EvolveGCN
     #DySAT
     #T-GCN
@@ -58,7 +57,7 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=0.1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    fraction=1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -133,7 +132,7 @@ def train_model_pr(
         stats = {
             "epochs": [], "train_loss": [], "spend_time": [],
             "val_accuracy": [], "val_top_k_accuracy": [], #"val_precision": [], "val_recall": [], "val_f1_score": [],
-            "val_mae": [], "val_rmse": [], "val_r2": [],
+            #"val_mae": [], "val_rmse": [], "val_r2": [],
             "val_out_of_scope_rate": []
             }
         test_stats = {}
@@ -150,6 +149,8 @@ def train_model_pr(
         # Розділення даних
         train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction)
 
+        stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
+        global_statistics = load_global_statistics_from_json(stat_path)
         # Фіксація часу початку навчання
         start_time = datetime.now()
         print(f"Час початку навчання: {start_time}")
@@ -171,7 +172,7 @@ def train_model_pr(
             #logger.info(f"Втрати на навчанні: {train_loss}")
 
             # Валідація
-            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
+            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size)
             #print(val_stats)
             if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
             if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
@@ -209,10 +210,6 @@ def train_model_pr(
             # Збереження контрольної точки
             checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
-
-            # Тестування після кожної епохи
-            #test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
-            #logger.info(f"Статистика тестування (епоха {epoch + 1}): {test_stats}")
 
             # Збереження статистики та візуалізація після кожної епохи
             #file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_epoch_{epoch + 1}.png"

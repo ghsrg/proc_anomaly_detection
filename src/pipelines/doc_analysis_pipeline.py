@@ -165,7 +165,7 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
         return None
 
 
-def analyze_documents(caption_filter=None):
+def gen_graph_from_raw_data(caption_filter=None):
     """
     Основна функція для аналізу документів бере дані з RAW файлів та вираховує графи.
     Після відпрацювання створюється реєстр оброблених файлів і файли з графами процесів
@@ -238,9 +238,8 @@ def analyze_documents(caption_filter=None):
         left_on='externalid',
         right_on='ID_'
     )
-    bpm_doc_info = read_from_parquet("bpm_doc_purch")  #!!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
     grouped_graph = build_graph_for_group(grouped_instances_with_bpmn, enriched_tasks, camunda_actions)
-
+    bpm_doc_info = read_from_parquet("bpm_doc_purch")  #TODO !!!!!!!!!!!!!! Хардкод під документи закупівель!!!!!!!!!!!
     #logger.debug(grouped_graph, variable_name="grouped_graph", max_lines=5)
 
     ###########################

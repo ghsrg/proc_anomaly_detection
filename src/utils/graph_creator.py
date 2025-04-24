@@ -259,9 +259,15 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         nodes = elements['nodes']
         edges = elements['edges']
 
+        # визначаємо до якого процесу належить вузол
+        task_proc_key = group.loc[group['ID_'] == proc_id, 'KEY_'].values
+        task_proc_key = task_proc_key[0] if len(task_proc_key) > 0 else 'NoProc'
+
         # Додаємо вузли з BPMN
         for node_id, attr in nodes.items():
             attr['active_executions'] = 0  # Додаємо атрибут кількість виконань зі значенням 0
+            attr['PROC_KEY_'] = task_proc_key  # одразу додаємо ключ
+
             if node_id in graph.nodes:
                 logger.warning(f"Дублювання вузла з ідентифікатором: {node_id}")
             else:
@@ -301,6 +307,7 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                         'TASK_ID_': lambda x: x.iloc[0] if x.notna().any() else ''
                         # Беремо випадковий TASK_ID_ задачі, що мала декілька виконань. Тут втрачаємо деталі по повторних задачах
                     })
+
                     #logger.debug(grouped, variable_name=f"{level} grouped", max_lines=10)
                     # Логіка для технічних вузлів (без TASK_ID_)
                     if grouped['TASK_ID_'].isnull().all() or (grouped['TASK_ID_'] == '').all():
@@ -373,9 +380,11 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
                             'SEQUENCE_COUNTER_': camunda_row.get('SEQUENCE_COUNTER_'),
                             'TASK_ID_': camunda_row.get('TASK_ID_'),
                             'active_executions': 1  # Це статичне значення завжди додається
+
                         }.items()
                         if pd.notna(value)  # Додаємо тільки значення, які існують
                     }
+                    node_params['PROC_KEY_'] = task_proc_key # Додаємо ключ процесу
                     #logger.debug(node_params, variable_name=f"{level} node_NO_GROUP_params", depth=10, max_lines=30)
                     graph.nodes[node_id].update(node_params)
 

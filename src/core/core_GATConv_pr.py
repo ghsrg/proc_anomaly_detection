@@ -85,7 +85,7 @@ def simplify_bpmn_id(raw_id: str) -> str:
     match = re.match(r'^([^_]+_[^_]+)', raw_id)
     return match.group(1) if match else raw_id
 
-def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
+def train_epoch(model, data, optimizer, batch_size=64, alpha=0):
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
@@ -132,7 +132,7 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0.20):
     avg_loss = total_loss / num_batches
     return avg_loss
 
-def calculate_statistics(model, val_data, global_node_dict, batch_size=64, top_k=3):
+def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3):
     model.eval()
     all_preds = []
     all_labels = []
@@ -141,6 +141,8 @@ def calculate_statistics(model, val_data, global_node_dict, batch_size=64, top_k
     topk_hits = []
     time_preds = []
     time_labels = []
+
+
 
     num_batches = (len(val_data) + batch_size - 1) // batch_size
 
@@ -239,6 +241,21 @@ def calculate_statistics(model, val_data, global_node_dict, batch_size=64, top_k
     rmse = mse ** 0.5
     r2 = max(0, r2_score(time_labels, time_preds))
 
+    # Регресійні метрики (денормалізовані значення)
+    min_dur = global_statistics["node_numeric"]["duration_work"]["min"]
+    max_dur = global_statistics["node_numeric"]["duration_work"]["max"]
+
+    if max_dur > min_dur:
+        denorm_time_preds = [(v * (max_dur - min_dur) + min_dur) for v in time_preds]
+        denorm_time_labels = [(v * (max_dur - min_dur) + min_dur) for v in time_labels]
+
+        mae_real = mean_absolute_error(denorm_time_labels, denorm_time_preds)
+        mse_real = mean_squared_error(denorm_time_labels, denorm_time_preds)
+        rmse_real = mse_real ** 0.5
+        r2_real = max(0, r2_score(denorm_time_labels, denorm_time_preds))
+    else:
+        mae_real = mse_real = rmse_real = r2_real = None
+
     return {
         "accuracy": acc,
         "top_k_accuracy": top_k_accuracy,
@@ -248,9 +265,9 @@ def calculate_statistics(model, val_data, global_node_dict, batch_size=64, top_k
         "confusion_matrix": cm,
         "true_node_ids": all_true_ids,
         "pred_node_ids": all_pred_ids,
-        "mae": mae,
-        "rmse": rmse,
-        "r2": r2,
+        "mae": mae_real,
+        "rmse": rmse_real,
+        "r2": r2_real,
         "out_of_scope_rate": out_of_scope_rate
     }
 
@@ -345,7 +362,7 @@ def prepare_data(normal_graphs):
         return data
 
     selected_node_attrs = [
-        "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "user_compl_login",
+        "DURATION_", "START_TIME_", "PROC_KEY_", "active_executions", "user_compl_login",
         "SEQUENCE_COUNTER_", "taskaction_code", "task_status"
     ]
     selected_edge_attrs = ["DURATION_E"]
@@ -447,7 +464,7 @@ def prepare_data_log_only(normal_graphs):
         )
 
     selected_node_attrs = [
-        "DURATION_", "START_TIME_", "END_TIME_", "active_executions", "user_compl_login",
+        "DURATION_", "START_TIME_", "PROC_KEY_", "active_executions", "user_compl_login",
         "SEQUENCE_COUNTER_", "taskaction_code", "task_status"
     ]
     selected_doc_attrs = [

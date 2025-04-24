@@ -272,6 +272,18 @@ def save_statistics_to_json(stats, file_path):
     with open(f"{file_path}.json", "w") as f:
         json.dump(stats, f, indent=4, default=convert_to_serializable)
 
+
+def load_global_statistics_from_json(file_path):
+    """
+    Завантажує глобальну статистику з JSON-файлу.
+
+    :param file_path: Шлях до файлу (без .json)
+    :return: Словник зі статистикою
+    """
+    with open(f"{file_path}.json", "r") as f:
+        stats = json.load(f)
+    return stats
+
 def save2csv(df: pd.DataFrame, file_name: str):
     """Зберігає реєстр."""
     #print(df)
