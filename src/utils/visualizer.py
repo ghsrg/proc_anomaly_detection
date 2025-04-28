@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from scipy.stats import linregress
 import matplotlib.cm as cm
 import numpy as np
 from collections import defaultdict
@@ -367,15 +368,88 @@ def visualize_graph_heatmap(graph: nx.DiGraph, cm_matrix: np.ndarray, class_labe
     plt.show()
 
 
-def visualize_distribution(node_distribution, edge_distribution, file_path=None):
+import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+
+def visualize_train_vs_val_accuracy(activity_train_vs_val_accuracy, file_path=None):
     """
-    Візуалізує розподіл кількості вузлів та зв'язків у графах.
+    Візуалізує залежність точності передбачення активностей від їх частоти у тренувальних даних.
+
+    :param activity_train_vs_val_accuracy: Словник формату {node_idx: {"train_count": int, "val_accuracy": float or None}}
+    :param file_path: Шлях до файлу для збереження графіка (опціонально).
+    """
+    train_counts = []
+    val_accuracies = []
+
+    for node_idx, stats in activity_train_vs_val_accuracy.items():
+        train_count = stats["train_count"]
+        val_accuracy = stats["val_accuracy"]
+
+        if val_accuracy is not None:
+            train_counts.append(train_count)
+            val_accuracies.append(val_accuracy)
+
+    plt.figure(figsize=(18, 8))
+    plt.scatter(train_counts, val_accuracies, alpha=0.7, edgecolors='k')
+    plt.xlabel('Train Appearance Count')
+    plt.ylabel('Validation Accuracy per Activity')
+    plt.title('Training Frequency vs Validation Accuracy')
+    plt.grid(True)
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
+def visualize_activity_train_vs_val_accuracy_with_regression(activity_train_vs_val_accuracy, file_path=None):
+    train_counts = []
+    val_accuracies = []
+
+    for node_idx, stats in activity_train_vs_val_accuracy.items():
+        train_count = stats["train_count"]
+        val_acc = stats["val_accuracy"]
+        if val_acc is not None:
+            train_counts.append(train_count)
+            val_accuracies.append(val_acc)
+
+    plt.figure(figsize=(22, 10))
+    plt.scatter(train_counts, val_accuracies, alpha=0.7, label="Activities")
+
+    # Побудова лінії регресії
+    if len(train_counts) > 1:
+        slope, intercept, r_value, p_value, std_err = linregress(train_counts, val_accuracies)
+        x_vals = np.array([min(train_counts), max(train_counts)])
+        y_vals = intercept + slope * x_vals
+        plt.plot(x_vals, y_vals, color='red', linestyle='--', label=f"Regression line\n$R^2$={r_value**2:.2f}")
+
+    plt.xlabel('Train Appearance Count')
+    plt.ylabel('Validation Accuracy per Activity')
+    plt.title('Training Frequency vs Validation Accuracy with Regression Line')
+    plt.legend()
+    plt.grid(True)
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
+def visualize_distribution(node_distribution, edge_distribution=None, prefix_distribution=None, file_path=None):
+    """
+    Візуалізує розподіл кількості вузлів, зв'язків та довжини префіксів у графах.
 
     :param node_distribution: Розподіл кількості вузлів.
     :param edge_distribution: Розподіл кількості зв'язків.
+    :param prefix_distribution: Розподіл довжини префіксів (опціонально).
+    :param file_path: Шлях до файлу для збереження графіка (опціонально).
     """
     plt.figure(figsize=(22, 12))
-
+    name = 'Node'
     # Розподіл кількості вузлів
     plt.plot(
         sorted(node_distribution.keys()),
@@ -386,25 +460,40 @@ def visualize_distribution(node_distribution, edge_distribution, file_path=None)
     )
 
     # Розподіл кількості зв'язків
-    plt.plot(
-        sorted(edge_distribution.keys()),
-        [edge_distribution[k] for k in sorted(edge_distribution.keys())],
-        label='Edge Count Distribution',
-        linestyle='--',
-        color='green'
-    )
+    if edge_distribution:
+        plt.plot(
+            sorted(edge_distribution.keys()),
+            [edge_distribution[k] for k in sorted(edge_distribution.keys())],
+            label='Edge Count Distribution',
+            linestyle='--',
+            color='red'
+        )
+        name = f'{name}, Edge'
+
+    # Розподіл довжини префіксів (якщо переданий)
+    if prefix_distribution:
+        plt.plot(
+            sorted(prefix_distribution.keys()),
+            [prefix_distribution[k] for k in sorted(prefix_distribution.keys())],
+            label='Prefix Length Distribution',
+            linestyle='-',
+            color='green'
+        )
+        name = f'{name}, Prefix'
 
     plt.xlabel('Count')
     plt.ylabel('Number of Graphs')
-    plt.title('Node and Edge Count Distributions')
+    plt.title(f'{name} Length Distributions')
     plt.legend()
     plt.grid(True)
+
     if file_path:
         plt.savefig(file_path)
         plt.close()
         print(f"Графік розподілення збережено у {file_path}")
     else:
         plt.show()
+
 
 
 import matplotlib.pyplot as plt

@@ -4,7 +4,7 @@ from src.utils.file_utils import load_register, save_register, load_graph, save_
 from src.utils.file_utils_l import join_path, is_file_exist
 from src.utils.visualizer import visualize_distribution
 from src.config.config import NORMALIZED_NORMAL_GRAPH_PATH, NORMALIZED_ANOMALOUS_GRAPH_PATH, NORMAL_GRAPH_PATH, \
-    ANOMALOUS_GRAPH_PATH, PROCESSED_DATA_PATH
+    ANOMALOUS_GRAPH_PATH, PROCESSED_DATA_PATH, OUTPUTS_DATA_PATH
 import numpy as np
 import networkx as nx
 from collections import defaultdict, Counter
@@ -46,9 +46,9 @@ def normalize_all_graphs(min_nodes, min_edges):
     stats = calculate_global_statistics(all_paths, all_docs_info, min_nodes, min_edges)
     print(f"Статистика по вузлах: {stats['node_count']}")
     print(f"Статистика по звя'зках: {stats['edge_count']}")
-
-    stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
-    save_statistics_to_json(stats, stat_path)
+    exit()
+    #stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
+    #save_statistics_to_json(stats, stat_path)
 
     normalized_normal_graphs = []
     normalized_anomalous_graphs = []
@@ -207,7 +207,7 @@ def calculate_global_statistics(graph_paths, all_docs_info, min_nodes=6, min_edg
     print(f"Час початку статистики: {start_time}")
 
     # Злиття результатів обробки
-    def merge_results(all_results):
+    def merge_results2(all_results):
         stats = {
             "node_numeric": defaultdict(list),
             "node_text": defaultdict(set),
@@ -282,6 +282,115 @@ def calculate_global_statistics(graph_paths, all_docs_info, min_nodes=6, min_edg
 
         return final_stats
 
+    from collections import defaultdict
+    import numpy as np
+
+    def calculate_distribution(stats, result, key_name, distribution_list_name):
+        """Універсальна функція для підрахунку і збереження розподілу."""
+        if key_name in result:
+            stats[key_name].extend(result[key_name])
+            stats[distribution_list_name].extend(result[key_name])
+
+    def merge_results(all_results):
+        stats = {
+            "node_numeric": defaultdict(list),
+            "node_text": defaultdict(set),
+            "edge_numeric": defaultdict(list),
+            "edge_text": defaultdict(set),
+            "doc_numeric": defaultdict(list),
+            "doc_text": defaultdict(set),
+            "node_count": [],
+            "edge_count": [],
+
+
+            # Додатково для побудови розподілів
+            "node_count_distribution": [],
+            "edge_count_distribution": [],
+            "prefix_length_distribution": []
+        }
+
+        for result in all_results:
+            for key, value in result.items():
+                if key in ["node_numeric", "edge_numeric"]:
+                    for attr, vals in value.items():
+                        stats[key][attr].extend(vals)
+                elif key in ["node_text", "edge_text"]:
+                    for attr, vals in value.items():
+                        stats[key][attr].update(vals)
+                elif key in ["doc_numeric", "doc_text"]:
+                    for attr, vals in value.items():
+                        stats[key][attr].extend(vals) if isinstance(vals, list) else stats[key][attr].update(vals)
+
+            # Підрахунок через універсальну функцію
+            calculate_distribution(stats, result, "node_count", "node_count_distribution")
+            calculate_distribution(stats, result, "edge_count", "edge_count_distribution")
+
+            # Спеціальний розрахунок для префіксів за SEQUENCE_COUNTER_
+            if "node_numeric" in result and "SEQUENCE_COUNTER_" in result["node_numeric"]:
+                seq_counter_values = result["node_numeric"]["SEQUENCE_COUNTER_"]
+                executed = sum(1 for val in seq_counter_values if val > 0)
+                stats["prefix_length_distribution"].append(executed)
+
+        final_stats = {
+            "node_numeric": {
+                attr: {
+                    "min": np.min(values),
+                    "max": np.max(values)
+                }
+                for attr, values in stats["node_numeric"].items() if values
+            },
+            "node_text": {
+                attr: {
+                    "unique_values": sorted(values)
+                }
+                for attr, values in stats["node_text"].items()
+            },
+            "edge_numeric": {
+                attr: {
+                    "min": np.min(values),
+                    "max": np.max(values)
+                }
+                for attr, values in stats["edge_numeric"].items() if values
+            },
+            "edge_text": {
+                attr: {
+                    "unique_values": sorted(values)
+                }
+                for attr, values in stats["edge_text"].items()
+            },
+            "doc_numeric": {
+                attr: {
+                    "min": np.min(values),
+                    "max": np.max(values)
+                }
+                for attr, values in stats["doc_numeric"].items() if values
+            },
+            "doc_text": {
+                attr: {
+                    "unique_values": sorted(values)
+                }
+                for attr, values in stats["doc_text"].items()
+            },
+            "node_count": {
+                "min": np.min(stats["node_count"]) if stats["node_count"] else None,
+                "max": np.max(stats["node_count"]) if stats["node_count"] else None
+            },
+            "edge_count": {
+                "min": np.min(stats["edge_count"]) if stats["edge_count"] else None,
+                "max": np.max(stats["edge_count"]) if stats["edge_count"] else None
+            },
+            "prefix_length": {
+                "min": np.min(stats["prefix_length_distribution"]) if stats["prefix_length_distribution"] else None,
+                "max": np.max(stats["prefix_length_distribution"]) if stats["prefix_length_distribution"] else None
+            },
+            "prefix_length_distribution": stats["prefix_length_distribution"],
+            "node_count_distribution": stats["node_count_distribution"],
+            "edge_count_distribution": stats["edge_count_distribution"]
+        }
+
+
+        return final_stats
+
     # Паралельна обробка
     process_func = partial(process_single_graph, min_nodes=min_nodes, min_edges=min_edges)
     num_cores = multiprocessing.cpu_count() // 2  # Використовувати половину ядер
@@ -292,6 +401,15 @@ def calculate_global_statistics(graph_paths, all_docs_info, min_nodes=6, min_edg
             results.append(result)
 
     final_stats = merge_results(results)
+
+    node_dist = Counter(final_stats["node_count_distribution"])
+    edge_dist = Counter(final_stats["edge_count_distribution"])
+    prefix_dist = Counter(final_stats["prefix_length_distribution"])
+
+    # Візуалізація розподілу
+    file_path = join_path([OUTPUTS_DATA_PATH, 'distribution'])
+    visualize_distribution(node_distribution=node_dist, edge_distribution=None, prefix_distribution=prefix_dist, file_path=file_path)
+
 
     # Обробка документів
     for doc_info in all_docs_info:

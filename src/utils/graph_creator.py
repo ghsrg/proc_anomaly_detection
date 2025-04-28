@@ -216,7 +216,11 @@ def build_graph_for_group(grouped_instances_with_bpmn, bpm_tasks, camunda_action
                 if not bpmn_model:
                     logger.warning(f"BPMN відсутня для ROOT_PROC_ID: {root_proc_id}")
                     continue
+                logger.warning(f"----------")
+                logger.warning(f"{root_proc_id}")
 
+                print (f"----------")
+                print (f"{root_proc_id}")
                 # Будуємо граф
                 graph = build_process_graph(bpmn_model, root_proc_id, root_group, bpm_tasks, camunda_actions)
 
@@ -262,11 +266,16 @@ def build_process_graph(bpmn_model, proc_id, group, bpm_tasks, camunda_actions):
         # визначаємо до якого процесу належить вузол
         task_proc_key = group.loc[group['ID_'] == proc_id, 'KEY_'].values
         task_proc_key = task_proc_key[0] if len(task_proc_key) > 0 else 'NoProc'
+        task_proc_vers = group.loc[group['ID_'] == proc_id, 'proc_def_version'].values
+        task_proc_vers = task_proc_vers[0] if len(task_proc_vers) > 0 else '0'
+        print(f"{task_proc_key}")
+        logger.warning(f"{task_proc_key} {task_proc_vers}")
 
         # Додаємо вузли з BPMN
         for node_id, attr in nodes.items():
             attr['active_executions'] = 0  # Додаємо атрибут кількість виконань зі значенням 0
             attr['PROC_KEY_'] = task_proc_key  # одразу додаємо ключ
+            attr['PROC_VER_'] = task_proc_vers  # одразу додаємо ключ
 
             if node_id in graph.nodes:
                 logger.warning(f"Дублювання вузла з ідентифікатором: {node_id}")

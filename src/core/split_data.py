@@ -3,20 +3,23 @@ import pandas as pd
 import random
 import numpy as np
 
-def split_data(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True, fraction=1.0):
+def split_data(data, split_ratio=(0.7, 0.2, 0.1), shuffle=True, fraction=1.0, seed=None):
     """
-    Розділяє дані на навчальну, валідаційну та тестову вибірки, з можливістю обмежити частку.
+    Розділяє дані на навчальну, валідаційну та тестову вибірки, з можливістю обмежити частку і зафіксувати seed.
 
     :param data: Список Data-об'єктів.
     :param split_ratio: Частки (train, val, test), сума має бути 1.0
     :param shuffle: Чи перемішувати перед розділенням
     :param fraction: Скільки відсотків даних повернути (0.0 – 1.0)
+    :param seed: Випадкове зерно для забезпечення відтворюваності
     :return: train_data, val_data, test_data
     """
     if not np.isclose(sum(split_ratio), 1.0):
         raise ValueError("Сума split_ratio повинна дорівнювати 1.")
 
     if shuffle:
+        if seed is not None:
+            random.seed(seed)
         random.shuffle(data)
 
     total_count = len(data)

@@ -1,85 +1,51 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATConv, global_mean_pool
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
-import torch.nn.functional as F
 from torch_geometric.nn import global_mean_pool
-from torch_geometric.nn import TransformerConv
-from torch_geometric.nn import GATv2Conv  # as fallback if TGAT not available
+from torch_geometric_temporal.nn.recurrent import EvolveGCNH
+from torch_geometric.data import Data
 from src.utils.file_utils import join_path, load_graph
 from sklearn.metrics import precision_score,accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from src.config.config import NORMALIZED_PR_NORMAL_GRAPH_PATH, LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
 from src.utils.logger import get_logger
 import re
 from tqdm import tqdm
+from types import SimpleNamespace
 
 logger = get_logger(__name__)
 
-class TGATLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, heads=2):
-        super().__init__()
-        self.heads = heads
-        self.att = TransformerConv(in_channels, out_channels // heads, heads=heads, dropout=0.1)
 
-    def forward(self, x, edge_index):
-        return self.att(x, edge_index)
+from torch_geometric_temporal.nn.recurrent import EvolveGCNH
 
-class TemporalEncoding(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
+class EGCN_H_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=100):
+        super(EGCN_H_pr, self).__init__()
 
-    def forward(self, x, t):
-        pe = torch.zeros_like(x)
-        position = t.unsqueeze(1)
-        max_len = x.size(1)
-        div_term = torch.exp(torch.arange(0, max_len, 2, dtype=torch.float, device=x.device) *
-                             -(torch.log(torch.tensor(10000.0)) / max_len))
+        # GNN шар: in_channels = кількість ознак вузла
+        self.gnn = EvolveGCNH(num_of_nodes=num_nodes, in_channels=input_dim)
 
-        sin_term = torch.sin(position * div_term)
-        cos_term = torch.cos(position * div_term)
-
-        pe[:, 0::2] = sin_term[:, :pe[:, 0::2].shape[1]]
-        pe[:, 1::2] = cos_term[:, :pe[:, 1::2].shape[1]]
-        return x + pe
-class TGAT_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
-        super(TGAT_pr, self).__init__()
-        self.conv1 = TGATLayer(input_dim, hidden_dim)
-        self.conv2 = TGATLayer(hidden_dim, hidden_dim)
-        self.temporal_encoding = TemporalEncoding(input_dim)
-
-
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
         self.dropout = nn.Dropout(p=0.3)
-
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
         self.global_pool = global_mean_pool
         self.activation = nn.ReLU()
         self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.task_head = nn.Linear(hidden_dim, output_dim)
-        self.time_head = nn.Linear(hidden_dim, 1)
+        self.bnf = nn.BatchNorm1d(hidden_dim * 2)
+        self.task_head = nn.Linear(hidden_dim, output_dim)  # Класифікація вузлів
+        self.time_head = nn.Linear(hidden_dim, 1)  # Прогноз часу
 
-    def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        edge_attr = getattr(data, 'edge_features', None)
-        doc_features = getattr(data, 'doc_features', None)
-        timestamps = getattr(data, 'timestamps', None)
-        logger.debug(data, variable_name=f"data {timestamps} ", max_lines=10, depth=10)
+    def forward(self, sequence, doc_features=None):
+        x_seq = [data.x.to(self.task_head.weight.device) for data in sequence]
+        edge_index_seq = [data.edge_index.to(self.task_head.weight.device) for data in sequence]
+        batch_seq = [data.batch if hasattr(data, 'batch') else torch.zeros(data.x.size(0), dtype=torch.long,
+                                                                           device=data.x.device) for data in sequence]
 
-        if timestamps is not None:
-            x = self.temporal_encoding(x, timestamps)
-        else:
-            logger.warning("Відсутні часові мітки для фічеризації графа.")
+        nodes_mask_list = [torch.ones(x.size(0), dtype=torch.bool, device=x.device) for x in x_seq]
 
-        x = self.activation(self.conv1(x, edge_index))
-        x = self.activation(self.bn1(x))
-        x = self.activation(self.conv2(x, edge_index))
-        x = self.activation(self.bn2(x))
+        # Проходимо покроково
+        for x_t, edge_index_t, mask_t in zip(x_seq, edge_index_seq, nodes_mask_list):
+            x_t = self.gnn(x_t, edge_index_t, mask_t)
+
+        x = self.global_pool(x_t, batch_seq[-1])
         x = self.dropout(x)
-        x = self.global_pool(x, batch)
 
         if doc_features is not None:
             doc_emb = self.activation(self.doc_fc(doc_features))
@@ -87,12 +53,14 @@ class TGAT_pr(nn.Module):
             doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
 
         x = torch.cat([x, doc_emb], dim=1)
+        x = self.bnf(x)
         x = self.activation(self.fusion_head(x))
         x = self.dropout(x)
 
         task_output = self.task_head(x)
         time_output = self.time_head(x)
         return task_output, time_output
+
 
 def create_optimizer(model, learning_rate=0.001):
     """
@@ -109,61 +77,51 @@ def simplify_bpmn_id(raw_id: str) -> str:
     match = re.match(r'^([^_]+_[^_]+)', raw_id)
     return match.group(1) if match else raw_id
 
-def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict=None, train_activity_counter=None):
+def train_epoch(model, data, optimizer, batch_size=1, alpha=0):
+    """
+    Тренування однієї епохи для EvolveGCN-моделі на послідовностях графів.
+    :param model: GNN-модель (EvolveGCN)
+    :param data: Список послідовностей графів (List[List[Data]])
+    :param optimizer: Оптимізатор
+    :param batch_size: Розмір батчу (для EvolveGCN краще 1)
+    :param alpha: Вага регресійної втрати (час)
+    :return: Середнє значення втрати
+    """
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
 
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", position=1,leave=False, dynamic_ncols=True):
-
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", position=1, leave=False, dynamic_ncols=True):
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, len(data))
-        batch = data[start_idx:end_idx]
+        batch = data[start_idx:end_idx]  # batch = List[List[Data]]
 
-        batch_tensor = torch.cat([torch.full((item.x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)], dim=0)
-        x = torch.cat([item.x for item in batch], dim=0)
-        edge_index = torch.cat([item.edge_index for item in batch], dim=1)
-        edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
-        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
-        timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], 'timestamps') else None
+        # Працюємо з одним прикладом — першим у батчі
+        sequence = batch[0]
+        x_seq = [graph.x.to(model.task_head.weight.device) for graph in sequence]
+        edge_index_seq = [graph.edge_index.to(model.task_head.weight.device) for graph in sequence]
 
-        y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
-        y_time = torch.stack([item.time_target for item in batch]).view(-1)
-
-        # Переносимо на GPU якщо є
-        x, edge_index, edge_attr, batch_tensor, doc_features = [t.to(model.task_head.weight.device) if t is not None else None for t in [x, edge_index, edge_attr, batch_tensor, doc_features]]
-        y_task = y_task.to(model.task_head.weight.device)
-        y_time = y_time.to(model.task_head.weight.device)
+        # Беремо дані останнього графа в послідовності
+        last_graph = sequence[-1]
+        doc_features = last_graph.doc_features.to(model.task_head.weight.device) if last_graph.doc_features is not None else None
+        y_task = last_graph.y.to(model.task_head.weight.device)
+        y_time = last_graph.time_target.to(model.task_head.weight.device)
 
         optimizer.zero_grad()
-        outputs_task, outputs_time = model.forward(
-            type("Batch", (object,), {
-                "x": x,
-                "edge_index": edge_index,
-                "edge_features": edge_attr,
-                "batch": batch_tensor,
-                "doc_features": doc_features,
-                "timestamps": timestamps
-            })
-        )
+        #output_task, output_time = model(x_seq, edge_index_seq, doc_features)
+        output_task, output_time = model(sequence, doc_features)
 
-        loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
-        loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
+        loss_task = nn.CrossEntropyLoss()(output_task, y_task)
+        loss_time = nn.MSELoss()(output_time.view(-1), y_time.view(-1))
         loss = loss_task + alpha * loss_time
 
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
 
-        if global_node_dict is not None and train_activity_counter is not None:
-            for label in y_task.cpu().numpy():
-                if label in global_node_dict.values():
-                    train_activity_counter[label] += 1
+    return total_loss / num_batches
 
-    avg_loss = total_loss / num_batches
-    return avg_loss
-
-def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
+def calculate_statistics2(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3):
     model.eval()
     all_preds = []
     all_labels = []
@@ -183,9 +141,9 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
             end_idx = min((batch_idx + 1) * batch_size, len(val_data))
             batch = val_data[start_idx:end_idx]
 
+
             batch_tensor = torch.cat([
-                torch.full((item.x.size(0),), i, dtype=torch.long)
-                for i, item in enumerate(batch)
+                torch.full((item[-1].x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)
             ], dim=0)
 
             x = torch.cat([item.x for item in batch], dim=0)
@@ -287,25 +245,6 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
     else:
         mae_real = mse_real = rmse_real = r2_real = None
 
-    from collections import Counter
-
-    # Підрахунок скільки разів зустрілась кожна активність на валідації
-    activity_total_counter = Counter()
-    activity_correct_counter = Counter()
-
-    for true_label, pred_label in zip(all_labels, all_preds):
-        activity_total_counter[true_label] += 1
-        if true_label == pred_label:
-            activity_correct_counter[true_label] += 1
-
-    activity_train_vs_val_accuracy = {
-        node_idx: {
-            "train_count": train_activity_counter.get(node_idx, 0) if train_activity_counter is not None else 0,
-            "val_accuracy": (activity_correct_counter[node_idx] / activity_total_counter[node_idx])
-            if activity_total_counter[node_idx] > 0 else None
-        }
-        for node_idx in global_node_dict.values()
-    }
     return {
         "accuracy": acc,
         "top_k_accuracy": top_k_accuracy,
@@ -318,18 +257,100 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
         "mae": mae_real,
         "rmse": rmse_real,
         "r2": r2_real,
-        "out_of_scope_rate": out_of_scope_rate,
-        "activity_train_vs_val_accuracy": activity_train_vs_val_accuracy
+        "out_of_scope_rate": out_of_scope_rate
+    }
 
+def calculate_statistics(model, val_data, global_node_dict, global_statistics, top_k=3):
+    model.eval()
+    all_preds = []
+    all_labels = []
+    all_pred_ids = []
+    all_true_ids = []
+    topk_hits = []
+    time_preds = []
+    time_labels = []
+
+    with torch.no_grad():
+        for sequence in val_data:
+            last_graph = sequence[-1]
+            doc_features = last_graph.doc_features.to(model.task_head.weight.device) if last_graph.doc_features is not None else None
+            y_task = last_graph.y.to(model.task_head.weight.device)
+            y_time = last_graph.time_target.to(model.task_head.weight.device)
+
+            outputs_task, outputs_time = model(sequence, doc_features)
+
+            pred = torch.argmax(outputs_task, dim=1)
+            topk = torch.topk(outputs_task, k=top_k, dim=1).indices.cpu().numpy()
+
+            all_preds.extend(pred.cpu().numpy())
+            all_labels.extend(y_task.cpu().numpy())
+
+            topk_hits.extend([
+                true_label in top_row
+                for true_label, top_row in zip(y_task.cpu().numpy(), topk)
+            ])
+
+            time_preds.extend(outputs_time.view(-1).cpu().numpy())
+            time_labels.extend(y_time.cpu().numpy())
+
+            valid_global_indices = {global_node_dict.get(nid) for nid in last_graph.node_ids}
+            pred_id = global_node_dict.get(last_graph.node_ids[pred.item()]) if pred.item() < len(last_graph.node_ids) else None
+            label_id = global_node_dict.get(last_graph.node_ids[y_task.item()]) if y_task.item() < len(last_graph.node_ids) else None
+
+            all_pred_ids.append(last_graph.node_ids[pred.item()] if pred_id in valid_global_indices else "INVALID")
+            all_true_ids.append(last_graph.node_ids[y_task.item()] if label_id in valid_global_indices else "INVALID")
+
+    from sklearn.metrics import precision_score, accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
+
+    valid_indices = [i for i, pred_id in enumerate(all_pred_ids) if pred_id != "INVALID"]
+    filtered_preds = [all_preds[i] for i in valid_indices]
+    filtered_labels = [all_labels[i] for i in valid_indices]
+
+    precision = precision_score(filtered_labels, filtered_preds, average='macro')
+    recall = recall_score(filtered_labels, filtered_preds, average='macro')
+    f1 = f1_score(filtered_labels, filtered_preds, average='macro')
+    acc = accuracy_score(filtered_labels, filtered_preds)
+    filtered_topk_hits = [topk_hits[i] for i in valid_indices]
+    top_k_accuracy = sum(filtered_topk_hits) / len(filtered_topk_hits) if filtered_topk_hits else 0.0
+
+    out_of_scope_count = len(all_preds) - len(filtered_preds)
+    out_of_scope_rate = out_of_scope_count / len(all_preds)
+
+    mae = mean_absolute_error(time_labels, time_preds)
+    mse = mean_squared_error(time_labels, time_preds)
+    rmse = mse ** 0.5
+    r2 = max(0, r2_score(time_labels, time_preds))
+
+    min_dur = global_statistics["node_numeric"]["duration_work"]["min"]
+    max_dur = global_statistics["node_numeric"]["duration_work"]["max"]
+    if max_dur > min_dur:
+        denorm_time_preds = [(v * (max_dur - min_dur) + min_dur) for v in time_preds]
+        denorm_time_labels = [(v * (max_dur - min_dur) + min_dur) for v in time_labels]
+
+        mae_real = mean_absolute_error(denorm_time_labels, denorm_time_preds)
+        mse_real = mean_squared_error(denorm_time_labels, denorm_time_preds)
+        rmse_real = mse_real ** 0.5
+        r2_real = max(0, r2_score(denorm_time_labels, denorm_time_preds))
+    else:
+        mae_real = mse_real = rmse_real = r2_real = None
+
+    return {
+        "accuracy": acc,
+        "top_k_accuracy": top_k_accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "confusion_matrix": confusion_matrix(filtered_labels, filtered_preds),
+        "true_node_ids": all_true_ids,
+        "pred_node_ids": all_pred_ids,
+        "mae": mae_real,
+        "rmse": rmse_real,
+        "r2": r2_real,
+        "out_of_scope_rate": out_of_scope_rate
     }
 
 def prepare_data(normal_graphs):
-    """
-    Prepares data for GNN prediction (next activity and time) with TGAT timestamps variant 3.
-    :param normal_graphs: Registry of normal graphs.
-    :return: List of Data objects for GNN, max_features, max_doc_dim, global_node_dict
-    """
-    data_list = []
+    all_sequences = []
     max_features = 0
     max_doc_dim = 0
     global_node_set = set()
@@ -362,18 +383,11 @@ def prepare_data(normal_graphs):
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
         nonlocal max_features
 
-        if graph.number_of_edges() == 0:
-            return None
-
         node_features, active_mask, timestamps = [], [], []
         for node_id, node_data in graph.nodes(data=True):
             simplified_name = simplify_bpmn_id(node_id)
             global_node_set.add(simplified_name)
-
-            features = [
-                float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
-                for attr in node_attrs
-            ]
+            features = [float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0 for attr in node_attrs]
             node_features.append(features)
             active_mask.append(1.0 if node_id in current_nodes else 0.0)
             t = float(node_data.get("START_TIME_", 0.0))
@@ -423,7 +437,7 @@ def prepare_data(normal_graphs):
         "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
     ]
 
-    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів", total=len(normal_graphs)):
+    for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів (динамічні)", total=len(normal_graphs)):
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_PR_NORMAL_GRAPH_PATH, graph_file])
@@ -438,6 +452,7 @@ def prepare_data(normal_graphs):
         if not executed:
             continue
 
+        sequence = []
         for i in range(1, len(executed)):
             current_nodes = executed[:i]
             executed_seq = [graph.nodes[n].get("SEQUENCE_COUNTER_", 0) for n in current_nodes]
@@ -449,13 +464,15 @@ def prepare_data(normal_graphs):
 
             data = transform_graph(graph, current_nodes, next_node, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
             if data:
-                data_list.append(data)
+                sequence.append(data)
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
-    # Побудова глобального словника
+        if sequence:
+            all_sequences.append(sequence)
+
     global_node_dict = {name: idx for idx, name in enumerate(sorted(global_node_set))}
 
-    return data_list, max_features, max_doc_dim, global_node_dict
+    return all_sequences, max_features, max_doc_dim, global_node_dict
 
 def prepare_data_log_only(normal_graphs):
     data_list = []
@@ -547,4 +564,5 @@ def prepare_data_log_only(normal_graphs):
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
     return data_list, max_features, max_doc_dim, global_node_dict
+
 

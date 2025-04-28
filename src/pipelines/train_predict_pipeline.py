@@ -2,15 +2,18 @@
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix
+from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix, visualize_train_vs_val_accuracy, visualize_activity_train_vs_val_accuracy_with_regression
 from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
+import random
+from collections import Counter
 import src.core.core_GATConv_pr as GATConv_pr_core
 import src.core.core_TGAT_pr as TGAT_pr_core
+import src.core.core_EGCN_H_pr as EGCN_H_pr_core
 #import src.core.core_rnn as rnn_core
 #import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer
@@ -28,7 +31,8 @@ logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
     "TGAT_pr": (TGAT_pr_core),
-    #EvolveGCN
+    "EGCN_H_pr": (EGCN_H_pr_core),
+    #EGCN_H_pr
     #DySAT
     #T-GCN
     #GRU-GNN / LSTM-GNN
@@ -37,9 +41,15 @@ MODEL_MAP = {
     #MuseGNN
     #GraphRNN
     "GATConv_pr": (GATConv_pr_core)#,
-    #GCN
+    #GCN DGCNN
     #ForwardGNN
     #DFA-GNN
+    #HiGPP
+    #GGNN
+    #Deep GCN з Instance Graphs
+    #Multi-perspective Enriched Instance Graphs
+    #MiTFM (Transformer + Multi-view Graph Fusion)
+
 
 }
 
@@ -57,7 +67,7 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    fraction=0.1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -81,6 +91,7 @@ def train_model_pr(
         pr_mode = args.pr_mode
         data = None
         input_dim = None
+        train_activity_counter = Counter()
         if data_file:  # Спроба завантажити підготовлені дані
             #data_path = "/content/drive/MyDrive/prepared_data/data_Transformer_missing_steps.pt"
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
@@ -107,9 +118,16 @@ def train_model_pr(
             save_prepared_data(data, input_dim, doc_dim, global_node_dict, data_path)
         # Переміщення даних на GPU/CPU
         for i in range(len(data)):
-            for key, value in data[i].items():
-                if isinstance(value, torch.Tensor):
-                    data[i][key] = value.to(device)
+            # якщо це послідовність графів
+            if isinstance(data[i], list):
+                for j in range(len(data[i])):
+                    for key, value in data[i][j].items():
+                        if isinstance(value, torch.Tensor):
+                            data[i][j][key] = value.to(device)
+            else:
+                for key, value in data[i].items():
+                    if isinstance(value, torch.Tensor):
+                        data[i][key] = value.to(device)
 
         # Визначення edge_dim із першого елемента даних
         if "edge_features" in data[0] and data[0]["edge_features"] is not None:
@@ -117,12 +135,17 @@ def train_model_pr(
         else:
             edge_dim = None  # Якщо зв'язків немає або вони не використовуються
 
+        stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
+        global_statistics = load_global_statistics_from_json(stat_path)
+
         # Ініціалізація моделі
         model_class = getattr(core_module, model_type, None)
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
+        output_dim = len(global_node_dict)
+        print (f"output_dim = {output_dim}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=len(global_node_dict), doc_dim=doc_dim, edge_dim=edge_dim)
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, doc_dim=doc_dim, edge_dim=edge_dim, num_nodes=global_statistics["node_count"]["max"])
         model = model.to(device)  # Переміщення моделі на GPU
 
         # Оптимізатор
@@ -147,10 +170,11 @@ def train_model_pr(
             start_epoch = start_epoch + 1
 
         # Розділення даних
-        train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction)
+        seed = random.randint(0, 10000)
+        print(f"Generated seed: {seed}")
+        train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction,  shuffle=True, seed=seed)
 
-        stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
-        global_statistics = load_global_statistics_from_json(stat_path)
+
         # Фіксація часу початку навчання
         start_time = datetime.now()
         print(f"Час початку навчання: {start_time}")
@@ -166,13 +190,17 @@ def train_model_pr(
             #print(f"Епоха {epoch + 1}/{num_epochs}")
             stats["epochs"].append(epoch + 1)
 
+            train_activity_counter.clear()
+
             # Навчання за епоху
-            train_loss = core_module.train_epoch(model, train_data, optimizer, batch_size)
+            train_loss = core_module.train_epoch(model, train_data, optimizer, batch_size, global_node_dict=global_node_dict, train_activity_counter=train_activity_counter)
             stats["train_loss"].append(train_loss)
+            #print(train_activity_counter)
             #logger.info(f"Втрати на навчанні: {train_loss}")
 
             # Валідація
-            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size)
+            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size, train_activity_counter = train_activity_counter)
+            #print(val_stats["activity_train_vs_val_accuracy"])
             #print(val_stats)
             if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
             if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
@@ -200,7 +228,7 @@ def train_model_pr(
                 best_val_loss = train_loss
                 epochs_no_improve = 0
                 # Можна зберігати найкращу модель
-                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_best.pt"
+                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_best.pt"
                 save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
                                 file_path=checkpoint_path, stats=stats)
             else:
@@ -208,17 +236,16 @@ def train_model_pr(
                 #logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
 
             # Збереження контрольної точки
-            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_epoch_{epoch + 1}.pt"
+            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_epoch_{epoch + 1}.pt"
             save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
             # Збереження статистики та візуалізація після кожної епохи
-            #file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_epoch_{epoch + 1}.png"
-            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_dim-{hidden_dim}_bs-{batch_size}.png"
+            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}.png"
             save_training_diagram(stats,
                                   file_path,
                                   test_stats, title=f"{model_type} Training and Validation Metrics")
             # Збереження матриці плутанини
-            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_CM.png"
+            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_CM.png"
             # Візуалізація матриці плутанини
 
             visualize_confusion_matrix(
@@ -229,7 +256,7 @@ def train_model_pr(
                 global_node_dict=global_node_dict
                 #true_node_ids=val_stats.get("true_node_ids")
             )
-            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_CM_worst.png"
+            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_seed{seed}_CM_worst.png"
 
             visualize_confusion_matrix(
                 confusion_matrix_object=val_stats["confusion_matrix"],
@@ -240,7 +267,11 @@ def train_model_pr(
                 #true_node_ids=val_stats.get("true_node_ids")
             )
 
-            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_statistics'])
+            train_vs_val_accuracy_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy.png"
+            visualize_activity_train_vs_val_accuracy_with_regression(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
+            #visualize_train_vs_val_accuracy(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
+
+            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_seed{seed}_statistics'])
             save2csv(stats, stat_path)
 
             # Зупинка навчання
@@ -270,7 +301,7 @@ def train_model_pr(
         if "val_f1_score" in stats: stats["val_f1_score"].append(test_stats.get("f1_score", 0))
         stats["spend_time"].append('')
 
-        stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_statistics'])
+        stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_seed{seed}_statistics'])
         save2csv(stats, stat_path)
         logger.info(f"Навчання завершено для моделі {model_type}")
 

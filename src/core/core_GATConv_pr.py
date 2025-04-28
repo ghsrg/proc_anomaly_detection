@@ -12,7 +12,7 @@ from tqdm import tqdm
 logger = get_logger(__name__)
 
 class GATConv_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None):
+    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None, num_nodes=None):
         super(GATConv_pr, self).__init__()
         task_output_dim, time_output_dim = output_dim, output_dim
 
@@ -85,7 +85,7 @@ def simplify_bpmn_id(raw_id: str) -> str:
     match = re.match(r'^([^_]+_[^_]+)', raw_id)
     return match.group(1) if match else raw_id
 
-def train_epoch(model, data, optimizer, batch_size=64, alpha=0):
+def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict=None, train_activity_counter=None):
     model.train()
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
@@ -101,6 +101,7 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0):
         edge_index = torch.cat([item.edge_index for item in batch], dim=1)
         edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
         doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+        timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], 'timestamps') else None
 
         y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
         y_time = torch.stack([item.time_target for item in batch]).view(-1)
@@ -117,7 +118,8 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0):
                 "edge_index": edge_index,
                 "edge_features": edge_attr,
                 "batch": batch_tensor,
-                "doc_features": doc_features
+                "doc_features": doc_features,
+                "timestamps": timestamps
             })
         )
 
@@ -129,10 +131,16 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0):
         optimizer.step()
         total_loss += loss.item()
 
+        if global_node_dict is not None and train_activity_counter is not None:
+            for label in y_task.cpu().numpy():
+                if label in global_node_dict.values():
+                    train_activity_counter[label] += 1
+
     avg_loss = total_loss / num_batches
     return avg_loss
 
-def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3):
+
+def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
     model.eval()
     all_preds = []
     all_labels = []
@@ -256,6 +264,25 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
     else:
         mae_real = mse_real = rmse_real = r2_real = None
 
+    from collections import Counter
+
+    # Підрахунок скільки разів зустрілась кожна активність на валідації
+    activity_total_counter = Counter()
+    activity_correct_counter = Counter()
+
+    for true_label, pred_label in zip(all_labels, all_preds):
+        activity_total_counter[true_label] += 1
+        if true_label == pred_label:
+            activity_correct_counter[true_label] += 1
+
+    activity_train_vs_val_accuracy = {
+        node_idx: {
+            "train_count": train_activity_counter.get(node_idx, 0) if train_activity_counter is not None else 0,
+            "val_accuracy": (activity_correct_counter[node_idx] / activity_total_counter[node_idx])
+            if activity_total_counter[node_idx] > 0 else None
+        }
+        for node_idx in global_node_dict.values()
+    }
     return {
         "accuracy": acc,
         "top_k_accuracy": top_k_accuracy,
@@ -268,7 +295,9 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
         "mae": mae_real,
         "rmse": rmse_real,
         "r2": r2_real,
-        "out_of_scope_rate": out_of_scope_rate
+        "out_of_scope_rate": out_of_scope_rate,
+        "activity_train_vs_val_accuracy": activity_train_vs_val_accuracy
+
     }
 
 def prepare_data(normal_graphs):

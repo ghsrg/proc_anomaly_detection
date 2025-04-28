@@ -130,11 +130,12 @@ def group_process_instances_by_root(process_instances, camunda_instances):
         return None
 
 
-def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
+def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df, proc_def):
     """
     Доповнює групи екземплярів процесів інформацією про BPMN модель.
     :param grouped_instances: Словник {doc_id: {root_id: DataFrame процесів}}.
     :param bpmn_df: DataFrame із BPMN моделями.
+    :param proc_def: DataFrame з дефініціями процесів.
     :return: Оновлений словник з доданими bpmn_model.
     """
     try:
@@ -148,6 +149,16 @@ def enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df):
                     bpmn_df[['process_definition_id', 'bpmn_model', 'KEY_']],
                     left_on='PROC_DEF_ID_',
                     right_on='process_definition_id',
+                    how='left'
+                )
+                # Використовуємо merge для додавання proc_def
+                # Приводимо обидві колонки до типу str
+                group['PROC_DEF_ID_'] = group['PROC_DEF_ID_'].astype(str)
+                proc_def['proc_def_id'] = proc_def['proc_def_id'].astype(str)
+                group = group.merge(
+                    proc_def[['proc_def_id', 'proc_def_type', 'proc_def_name','proc_def_version','proc_def_status']],
+                    left_on='PROC_DEF_ID_',
+                    right_on='proc_def_id',
                     how='left'
                 )
 
@@ -215,7 +226,9 @@ def gen_graph_from_raw_data(caption_filter=None):
     ###########################
     # додавання до процесу XML BPMN
     bpmn_df = read_from_parquet("bpmn_definitions")
-    grouped_instances_with_bpmn = enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df)
+    proc_def = read_from_parquet("bpm_proc_def")
+
+    grouped_instances_with_bpmn = enrich_grouped_instances_with_bpmn(grouped_instances, bpmn_df, proc_def)
     #logger.debug(grouped_instances_with_bpmn, variable_name="grouped_instances_with_bpmn", max_lines=3)
 
     if not grouped_instances_with_bpmn:
