@@ -2,7 +2,10 @@ import argparse
 from src.utils.logger import get_logger
 from src.modes.preparation_mode import run_preparation_mode
 from src.modes.learning_mode import run_learning_mode
-from src.modes.analityc_mode import run_production_mode
+from src.modes.analityc_mode import run_analitics_mode
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
 
 logger = get_logger(__name__)
 
@@ -47,7 +50,7 @@ def main():
             run_learning_mode(args)
         elif args.mode == "analityc":
             logger.info("Запущено режим аналітики.")
-            run_production_mode(args)
+            run_analitics_mode(args)
         else:
             logger.error(f"Невідомий режим: {args.mode} Допустимі значення: experimental, analytical, production.")
 

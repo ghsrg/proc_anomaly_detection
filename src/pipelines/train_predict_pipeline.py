@@ -11,9 +11,25 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import random
 from collections import Counter
+import src.core.core_MLP_pr as MLP_pr_core
 import src.core.core_GATConv_pr as GATConv_pr_core
 import src.core.core_TGAT_pr as TGAT_pr_core
+import src.core.core_GCN_pr as GCN_pr_core
+import src.core.core_GraphSAGE_pr as GraphSAGE_pr_core
+import src.core.core_MuseGNN_pr as MuseGNN_pr_core
+import src.core.core_APPNP_pr as APPNP_pr_core
+import src.core.core_DFAGNN_pr as DFAGNN_pr_core
+import src.core.core_DeepGCN_pr as DeepGCN_pr_core
+import src.core.core_TemporalGAT_pr as TemporalGAT_pr_core
+import src.core.core_TGCN_pr as TGCN_pr_core
+import src.core.core_GRUGAT_pr as GRUGAT_pr_core
+import src.core.core_TransformerMLP_pr as TransformerMLP_pr_core
+import src.core.core_GraphMixer_pr as GraphMixer_pr_core
+import src.core.core_GGNN_pr as GGNN_pr_core
+import src.core.core_GPRGNN_pr as GPRGNN_pr_core
+
 import src.core.core_EGCN_H_pr as EGCN_H_pr_core
+
 #import src.core.core_rnn as rnn_core
 #import src.core.core_cnn as cnn_core
 #import src.core.transformer as transformer
@@ -30,26 +46,33 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
+    "MLP_pr": (MLP_pr_core),
     "TGAT_pr": (TGAT_pr_core),
     "EGCN_H_pr": (EGCN_H_pr_core),
-    #EGCN_H_pr
+    "GCN_pr": (GCN_pr_core),
+    "MuseGNN_pr": (MuseGNN_pr_core),
+    "GraphSAGE_pr": (GraphSAGE_pr_core),
+    "APPNP_pr": (APPNP_pr_core),
+    "DFAGNN_pr": (DFAGNN_pr_core),
+    "DeepGCN_pr": (DeepGCN_pr_core),
+    "TemporalGAT_pr": (TemporalGAT_pr_core),
+    "GRUGAT_pr": (GRUGAT_pr_core),#
+    "TGCN_pr": (TGCN_pr_core),
+    "TransformerMLP_pr": (TransformerMLP_pr_core),
+    "GraphMixer_pr": (GraphMixer_pr_core),
+    "GGNN_pr": (GGNN_pr_core),
+    "GPRGNN_pr": (GPRGNN_pr_core),
+    # GCN DGCNN
+    #EGCN_O_pr
     #DySAT
-    #T-GCN
     #GRU-GNN / LSTM-GNN
-    #Temporal GNN
-    #GraphSAGE
-    #MuseGNN
     #GraphRNN
+    # DFA-GNN
+    # HiGPP
+    # GGNN
+    # Multi-perspective Enriched Instance Graphs
+    # MiTFM (Transformer + Multi-view Graph Fusion)
     "GATConv_pr": (GATConv_pr_core)#,
-    #GCN DGCNN
-    #ForwardGNN
-    #DFA-GNN
-    #HiGPP
-    #GGNN
-    #Deep GCN з Instance Graphs
-    #Multi-perspective Enriched Instance Graphs
-    #MiTFM (Transformer + Multi-view Graph Fusion)
-
 
 }
 
@@ -67,7 +90,8 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=0.1 # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    fraction=0.1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    seed = 9467
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -92,6 +116,10 @@ def train_model_pr(
         data = None
         input_dim = None
         train_activity_counter = Counter()
+        stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
+        global_statistics = load_global_statistics_from_json(stat_path)
+        max_node_count = global_statistics["node_count"]["max"]
+        max_edge_count = global_statistics["edge_count"]["max"]
         if data_file:  # Спроба завантажити підготовлені дані
             #data_path = "/content/drive/MyDrive/prepared_data/data_Transformer_missing_steps.pt"
             data_path = join_path([NN_PR_MODELS_DATA_PATH, f"{data_file}.pt"])
@@ -108,9 +136,9 @@ def train_model_pr(
                 raise ValueError("Реєстри нормалізованих графів порожні. Перевірте дані!")
             # Підготовка даних і визначення структури
             if pr_mode == 'bpmn':
-                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data(normal_graphs)
+                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data(normal_graphs, max_node_count, max_edge_count)
             elif    pr_mode == 'logs':
-                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data_log_only(normal_graphs)
+                data, input_dim, doc_dim, global_node_dict = core_module.prepare_data_log_only(normal_graphs, max_node_count,max_edge_count)
             else:
                 raise ValueError(f"Невірний режим підготовки даних pr_mode: {pr_mode} (bpms/logs)")
             # Збереження підготовлених даних
@@ -135,17 +163,17 @@ def train_model_pr(
         else:
             edge_dim = None  # Якщо зв'язків немає або вони не використовуються
 
-        stat_path = join_path([PROCESSED_DATA_PATH, "normalized_statistics"])
-        global_statistics = load_global_statistics_from_json(stat_path)
+
 
         # Ініціалізація моделі
         model_class = getattr(core_module, model_type, None)
         if model_class is None:
             raise ValueError(f"Невідома модель: {model_type}")
         output_dim = len(global_node_dict)
+        print (global_node_dict)
         print (f"output_dim = {output_dim}")
 
-        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, doc_dim=doc_dim, edge_dim=edge_dim, num_nodes=global_statistics["node_count"]["max"])
+        model = model_class(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, doc_dim=doc_dim, edge_dim=edge_dim, num_nodes=max_node_count)
         model = model.to(device)  # Переміщення моделі на GPU
 
         # Оптимізатор
@@ -170,8 +198,9 @@ def train_model_pr(
             start_epoch = start_epoch + 1
 
         # Розділення даних
-        seed = random.randint(0, 10000)
-        print(f"Generated seed: {seed}")
+        if seed is None:
+            seed = random.randint(0, 10000)
+            print(f"Generated seed: {seed}")
         train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction,  shuffle=True, seed=seed)
 
 

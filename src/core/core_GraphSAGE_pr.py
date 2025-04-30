@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATConv, global_mean_pool
+from torch_geometric.nn import SAGEConv, global_mean_pool
 from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+import torch.nn.functional as F
+
 from src.utils.file_utils import join_path, load_graph
 from sklearn.metrics import precision_score,accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
 from src.config.config import NORMALIZED_PR_NORMAL_GRAPH_PATH, LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH
@@ -11,55 +14,63 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class GATConv_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None, num_nodes=None):
-        super(GATConv_pr, self).__init__()
+class GraphSAGE_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+        super().__init__()
+        print(f"📦 Init GraphSAGE_pr with input_dim={input_dim}, output_dim={output_dim}")
 
-        self.conv1 = GATConv(input_dim, hidden_dim)
-        self.conv2 = GATConv(hidden_dim, hidden_dim)
-        self.conv3 = GATConv(hidden_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
-        self.bn3 = nn.BatchNorm1d(hidden_dim)
-
-        self.dropout = nn.Dropout(p=0.3)
+        self.gnn = SAGEConv(input_dim, hidden_dim)
+        self.activation = nn.ReLU()
+        self.global_pool = global_mean_pool
 
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
-        self.global_pool = global_mean_pool
-        self.activation = nn.ReLU()
+
+        self.bnf = nn.LayerNorm(hidden_dim * 2)
         self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.bnf = nn.BatchNorm1d(hidden_dim * 2)
+        self.dropout = nn.Dropout(0.3)
+
         self.task_head = nn.Linear(hidden_dim, output_dim)
         self.time_head = nn.Linear(hidden_dim, 1)
 
+    def forward(self, data_batch, doc_features=None):
+        device = self.task_head.weight.device
+        x = data_batch.x.to(device)
+        edge_index = data_batch.edge_index.to(device)
+        batch = data_batch.batch.to(device)
 
-    def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-
-        edge_attr = getattr(data, 'edge_features', None)
-        #edge_attr = getattr(data, 'edge_attr', None)
-
-        doc_features = getattr(data, 'doc_features', None)
-
-        x = self.activation(self.conv1(x, edge_index, edge_attr))
-        x = self.activation(self.conv2(x, edge_index, edge_attr))
-        x = self.bn2(x)
-        x = self.activation(x)
-        x = self.dropout(x)
-        x = self.global_pool(x, batch)
+        x = self.activation(self.gnn(x, edge_index))
+        x_pooled = self.global_pool(x, batch)
 
         if doc_features is not None:
-            doc_emb = self.activation(self.doc_fc(doc_features))
+            doc_emb = self.activation(self.doc_fc(doc_features.to(device)))
         else:
-            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            doc_emb = torch.zeros((x_pooled.size(0), self.doc_fc.out_features), device=device)
 
-        x = torch.cat([x, doc_emb], dim=1)
+        x = torch.cat([x_pooled, doc_emb], dim=1)
         x = self.bnf(x)
         x = self.activation(self.fusion_head(x))
         x = self.dropout(x)
-        task_output = self.task_head(x)
-        time_output = self.time_head(x)
-        return task_output, time_output
+
+        return self.task_head(x), self.time_head(x)
+
+class TemporalEncoding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x, t):
+        pe = torch.zeros_like(x)
+        position = t.unsqueeze(1)
+        max_len = x.size(1)
+        div_term = torch.exp(torch.arange(0, max_len, 2, dtype=torch.float, device=x.device) *
+                             -(torch.log(torch.tensor(10000.0)) / max_len))
+
+        sin_term = torch.sin(position * div_term)
+        cos_term = torch.cos(position * div_term)
+
+        pe[:, 0::2] = sin_term[:, :pe[:, 0::2].shape[1]]
+        pe[:, 1::2] = cos_term[:, :pe[:, 1::2].shape[1]]
+        return x + pe
 
 def create_optimizer(model, learning_rate=0.001):
     """
@@ -72,7 +83,9 @@ def create_optimizer(model, learning_rate=0.001):
     #return Adam(model.parameters(), lr=learning_rate)
     return torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
-
+def simplify_bpmn_id(raw_id: str) -> str:
+    match = re.match(r'^([^_]+_[^_]+)', raw_id)
+    return match.group(1) if match else raw_id
 
 def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict=None, train_activity_counter=None):
     model.train()
@@ -127,7 +140,6 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict
 
     avg_loss = total_loss / num_batches
     return avg_loss
-
 
 def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
     model.eval()
@@ -289,17 +301,10 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
 
     }
 
-def simplify_bpmn_id(raw_id: str) -> str:
-    match = re.match(r'^([^_]+_[^_]+)', raw_id)
-    return match.group(1) if match else raw_id
-
-def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=100):
+def prepare_data(normal_graphs):
     """
-    Prepares data for GNN prediction (next activity and time) for dynamic graphs.
+    Prepares data for GNN prediction (next activity and time) with TGAT timestamps variant 3.
     :param normal_graphs: Registry of normal graphs.
-    :param max_node_count: Maximum number of nodes across all graphs.
-    :param max_edge_count: Maximum number of edges across all graphs.
-    :param limit: Limit the number of graphs to process (for testing).
     :return: List of Data objects for GNN, max_features, max_doc_dim, global_node_dict
     """
     data_list = []
@@ -331,70 +336,60 @@ def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=100):
                 doc_features.append(0.0)
         return torch.tensor(doc_features, dtype=torch.float)
 
-    def transform_graph(graph, current_nodes, next_node, node_attrs, edge_attrs, doc_info, selected_doc_attrs,
-                        max_node_count, max_edge_count):
-        nonlocal max_features, global_node_set
-
+    def transform_graph(graph, current_nodes, next_node, node_attrs, edge_attrs, doc_info, selected_doc_attrs):
         node_map = {node: idx for idx, node in enumerate(graph.nodes())}
-        real_node_ids = list(graph.nodes())
-        global_node_set.update(real_node_ids)
+        nonlocal max_features
+
+        if graph.number_of_edges() == 0:
+            return None
 
         node_features, active_mask, timestamps = [], [], []
-        for node_id in real_node_ids:
+        for node_id, node_data in graph.nodes(data=True):
+            simplified_name = simplify_bpmn_id(node_id)
+            global_node_set.add(simplified_name)
+
             features = [
-                float(graph.nodes[node_id].get(attr, 0)) if isinstance(graph.nodes[node_id].get(attr), (int, float)) else 0.0
+                float(node_data.get(attr, 0)) if isinstance(node_data.get(attr), (int, float)) else 0.0
                 for attr in node_attrs
             ]
             node_features.append(features)
             active_mask.append(1.0 if node_id in current_nodes else 0.0)
-            timestamps.append(float(graph.nodes[node_id].get("START_TIME_", 0)) if node_id in current_nodes else 1.1)
-
-        pad_size = max_node_count - len(real_node_ids)
-        node_features.extend([[0.0] * len(node_attrs)] * pad_size)
-        active_mask.extend([0.0] * pad_size)
-        timestamps.extend([1.1] * pad_size)
-        real_node_ids.extend([f"padding_{i}" for i in range(pad_size)])
+            t = float(node_data.get("START_TIME_", 0.0))
+            timestamps.append(t if node_id in current_nodes else 1.1)
 
         x = torch.tensor(node_features, dtype=torch.float)
-        x = torch.cat([x, torch.tensor(active_mask, dtype=torch.float).view(-1, 1)], dim=1)
-        timestamps = torch.tensor(timestamps, dtype=torch.float)
+        active_mask = torch.tensor(active_mask, dtype=torch.float).view(-1, 1)
+        x = torch.cat([x, active_mask], dim=1)
 
         if x.shape[1] > 0:
             max_features = max(max_features, x.shape[1])
 
-        real_edges = [(node_map[u], node_map[v]) for u, v in graph.edges()
-                      if u in node_map and v in node_map]
-        edge_index = torch.tensor(real_edges, dtype=torch.long).t().contiguous() if real_edges else torch.empty((2, 0), dtype=torch.long)
+        edges = [(node_map[edge[0]], node_map[edge[1]]) for edge in graph.edges()]
+        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
 
-        if edge_attrs and real_edges:
-            edge_attr = torch.tensor([
-                [float(graph.get_edge_data(u, v).get(attr, 0)) for attr in edge_attrs]
-                for u, v in graph.edges()
-            ], dtype=torch.float)
-        else:
-            edge_attr = torch.zeros((edge_index.shape[1], 1), dtype=torch.float)
+        edge_attr = torch.tensor([
+            [float(edge_data.get(attr, 0)) for attr in edge_attrs]
+            for _, _, edge_data in graph.edges(data=True)
+        ], dtype=torch.float) if edge_attrs else None
 
-        if edge_index.shape[1] < max_edge_count:
-            padding_size = max_edge_count - edge_index.shape[1]
-            edge_index_padding = torch.zeros((2, padding_size), dtype=torch.long)
-            edge_attr_padding = torch.zeros((padding_size, edge_attr.shape[1]), dtype=torch.float)
-
-            edge_index = torch.cat([edge_index, edge_index_padding], dim=1)
-            edge_attr = torch.cat([edge_attr, edge_attr_padding], dim=0)
+        if edge_attr is None or edge_attr.shape[0] != edge_index.shape[1]:
+            edge_attr = torch.zeros((edge_index.shape[1], len(edge_attrs) if edge_attrs else 1), dtype=torch.float)
 
         doc_features = transform_doc(doc_info, selected_doc_attrs)
         time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)], dtype=torch.float) if next_node else None
-
-        return Data(
+        inverse_node_map = [simplify_bpmn_id(n) for n in graph.nodes()]
+        data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_attr,
             y=torch.tensor([node_map[next_node]], dtype=torch.long) if next_node else None,
             doc_features=doc_features,
             time_target=time_target,
-            node_ids=real_node_ids,
-            timestamps=timestamps
+            node_ids=inverse_node_map,
+            timestamps=torch.tensor(timestamps, dtype=torch.float)
         )
+
+        return data
 
     selected_node_attrs = [
         "DURATION_", "START_TIME_", "PROC_KEY_", "active_executions", "user_compl_login",
@@ -406,11 +401,7 @@ def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=100):
         "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
     ]
 
-    count = 0
     for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів", total=len(normal_graphs)):
-        if count >= limit:
-            break
-
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_PR_NORMAL_GRAPH_PATH, graph_file])
@@ -434,19 +425,17 @@ def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=100):
                 continue
             next_node = min(candidates, key=lambda n: graph.nodes[n]["SEQUENCE_COUNTER_"])
 
-            data = transform_graph(graph, current_nodes, next_node, selected_node_attrs, selected_edge_attrs,
-                                   doc_info, selected_doc_attrs, max_node_count, max_edge_count)
+            data = transform_graph(graph, current_nodes, next_node, selected_node_attrs, selected_edge_attrs, doc_info, selected_doc_attrs)
             if data:
                 data_list.append(data)
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
-        count += 1
-
+    # Побудова глобального словника
     global_node_dict = {name: idx for idx, name in enumerate(sorted(global_node_set))}
 
     return data_list, max_features, max_doc_dim, global_node_dict
 
-def prepare_data_log_only(normal_graphs,max_node_count=None):
+def prepare_data_log_only(normal_graphs):
     data_list = []
     max_features = 0
     max_doc_dim = 0
@@ -536,5 +525,4 @@ def prepare_data_log_only(normal_graphs,max_node_count=None):
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
 
     return data_list, max_features, max_doc_dim, global_node_dict
-
 

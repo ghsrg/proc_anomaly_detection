@@ -9,6 +9,8 @@ import gzip
 import json
 import torch
 from pathlib import Path
+import os
+import re
 logger = get_logger(__name__)
 
 
@@ -21,6 +23,61 @@ def save_to_parquet(df: pd.DataFrame, file_name: str):
     raw_data_path = join_path([RAW_PATH, f"{file_name}.parquet"])
     df.to_parquet(raw_data_path, engine="pyarrow", index=False)
     logger.info(f"Дані збережено у {raw_data_path}")
+
+
+
+def aggregate_statistics(directory_path):
+    all_results = []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith("statistics.xlsx"):
+            full_path = os.path.join(directory_path, filename)
+
+            # Виправлена регулярка
+            match = re.match(r"(.+?)(?:_pr)?_(logs|bpmn)_seed(\d+)_statistics\.xlsx", filename)
+            if match:
+                architecture, data_type, seed = match.groups()
+
+                try:
+                    df = pd.read_excel(full_path)
+
+                    if not df.empty:
+                        last_row = df.iloc[-1]  # беремо останній рядок
+                        result = {
+                            "architecture": architecture,
+                            "data_type": data_type,
+                            "seed": int(seed),
+                            "epoch": last_row['epochs'],
+                            "train_loss": last_row['train_loss'],
+                            "spend_time": last_row['spend_time'],
+                            "val_accuracy": last_row['val_accuracy'],
+                            "val_top_k_accuracy": last_row['val_top_k_accuracy'],
+                            "val_out_of_scope_rate": last_row['val_out_of_scope_rate']
+                        }
+                        all_results.append(result)
+                except Exception as e:
+                    print(f"Помилка при обробці {filename}: {e}")
+
+    # Об'єднати все в один DataFrame
+    final_df = pd.DataFrame(all_results)
+    return final_df
+
+def save_aggregated_statistics(df, output_path):
+    """
+    Зберігає агреговану таблицю у форматі Excel або CSV.
+
+    :param df: DataFrame з агрегованими результатами
+    :param output_path: Шлях для збереження файлу (з розширенням .xlsx або .csv)
+    """
+    if output_path.endswith(".xlsx"):
+        df.to_excel(output_path, index=False)
+        print(f"Агрегована статистика збережена у {output_path}")
+    elif output_path.endswith(".csv"):
+        df.to_csv(output_path, index=False)
+        print(f"Агрегована статистика збережена у {output_path}")
+    else:
+        raise ValueError("Файл має закінчуватись на '.xlsx' або '.csv'")
+
 
 def read_from_parquet(file_name: str, columns=None) -> pd.DataFrame:
     """
