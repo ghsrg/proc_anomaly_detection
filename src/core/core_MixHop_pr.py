@@ -19,12 +19,13 @@ class MixHop_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
         super(MixHop_pr, self).__init__()
 
-        # MixHop агрегує інформацію з різних k-hop сусідів
-        self.mixhop = MixHopConv(in_channels=input_dim, out_channels=hidden_dim, hidden_channels=hidden_dim, num_layers=2, powers=[0, 1, 2])
+        self.gc0 = GCNConv(input_dim, hidden_dim)
+        self.gc1 = GCNConv(hidden_dim, hidden_dim)
+        self.gc2 = GCNConv(hidden_dim, hidden_dim)
 
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
-        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.bnf = nn.LayerNorm(hidden_dim * 2)
+        self.fusion_head = nn.Linear(hidden_dim * 4, hidden_dim)
+        self.bnf = nn.LayerNorm(hidden_dim * 4)
 
         self.activation = nn.ReLU()
         self.dropout = nn.Dropout(0.3)
@@ -32,24 +33,26 @@ class MixHop_pr(nn.Module):
         self.task_head = nn.Linear(hidden_dim, output_dim)
         self.time_head = nn.Linear(hidden_dim, 1)
 
-        self.global_pool = global_mean_pool
-
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        doc_features = getattr(data, 'doc_features', None)
         batch = getattr(data, 'batch', None)
+        doc_features = getattr(data, 'doc_features', None)
 
-        x = self.mixhop(x, edge_index)
+        x0 = self.gc0(x, edge_index)  # 1-hop
+        x1 = self.gc1(x0, edge_index)  # 2-hop
+        x2 = self.gc2(x1, edge_index)  # 3-hop
+
+        x = torch.cat([x0, x1, x2], dim=1)
 
         if batch is None:
             batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
 
-        x = self.global_pool(x, batch)
+        x = global_mean_pool(x, batch)
 
         if doc_features is not None:
             doc_emb = self.activation(self.doc_fc(doc_features))
         else:
-            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            doc_emb = torch.zeros(x.size(0), self.doc_fc.out_features, device=x.device)
 
         fusion = torch.cat([x, doc_emb], dim=1)
         fusion = self.bnf(fusion)
@@ -57,6 +60,8 @@ class MixHop_pr(nn.Module):
         fusion = self.dropout(fusion)
 
         return self.task_head(fusion), self.time_head(fusion)
+
+
 class TemporalEncoding(nn.Module):
     def __init__(self, dim):
         super().__init__()

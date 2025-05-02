@@ -11,56 +11,110 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class GATConv_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None, num_nodes=None):
-        super(GATConv_pr, self).__init__()
 
-        self.conv1 = GATConv(input_dim, hidden_dim)
-        self.conv2 = GATConv(hidden_dim, hidden_dim)
-        self.conv3 = GATConv(hidden_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
-        self.bn3 = nn.BatchNorm1d(hidden_dim)
+class Graphormer_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+        """
+        :param input_dim: Розмірність вхідних ознак вузла.
+        :param hidden_dim: Розмірність прихованого простору.
+        :param output_dim: Кількість класів для прогнозу (задача класифікації).
+        :param doc_dim: Розмірність ознак документа.
+        :param edge_dim: (Опціонально) розмірність ознак ребер.
+        :param num_nodes: (Опціонально) максимальна кількість вузлів у графі (для позиційного кодування).
+        """
+        super(Graphormer_pr, self).__init__()
+        print(f"📦 Init Graphormer_pr with input_dim={input_dim}, output_dim={output_dim}")
 
-        self.dropout = nn.Dropout(p=0.3)
+        # Проєкція входу (node features) у прихований простір
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+        # Позиційне кодування: якщо num_nodes задано, використовуємо його, інакше беремо стандартно 500
+        num_positions = num_nodes if num_nodes is not None else 500
+        self.pos_embedding = nn.Embedding(num_positions, hidden_dim)
 
+        # TransformerEncoder для обробки вузлової послідовності
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_dim, nhead=4, batch_first=True)
+        # Використовуємо 4 шари Transformer
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=4)
+
+        # Проєкція документних ознак
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
-        self.global_pool = global_mean_pool
+
+        # Шари для об'єднання графового і документного представлень
+        self.fusion_bn = nn.LayerNorm(hidden_dim * 2)
+        self.fusion_fc = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.dropout = nn.Dropout(0.3)
         self.activation = nn.ReLU()
-        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.bnf = nn.BatchNorm1d(hidden_dim * 2)
+
+        # Вихідні шари: для класифікації та регресії (час)
         self.task_head = nn.Linear(hidden_dim, output_dim)
         self.time_head = nn.Linear(hidden_dim, 1)
 
+        # Глобальний пулінг (будемо використовувати mean pooling після трансформера)
+        self.global_pool = global_mean_pool
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-
-        edge_attr = getattr(data, 'edge_features', None)
-        #edge_attr = getattr(data, 'edge_attr', None)
-
+        """
+        :param data: об'єкт torch_geometric.data.Data
+               Має поля:
+                 - x: [num_nodes, input_dim]
+                 - edge_index (не використовується безпосередньо у Graphormer, оскільки структура подається через позиційне кодування)
+                 - batch: [num_nodes], індекси графів (якщо є)
+                 - doc_features: [batch_size, doc_dim] (опціонально)
+                 - timestamps: (опціонально, але тут не використовується)
+        """
+        x = data.x  # [num_nodes, input_dim]
+        batch = getattr(data, 'batch', None)
         doc_features = getattr(data, 'doc_features', None)
 
-        x = self.activation(self.conv1(x, edge_index, edge_attr))
-        x = self.activation(self.conv2(x, edge_index, edge_attr))
-        x = self.bn2(x)
-        x = self.activation(x)
-        x = self.dropout(x)
-        x = self.global_pool(x, batch)
+        device = x.device
+        # Проєкція в прихований простір
+        x = self.activation(self.input_proj(x))  # [num_nodes, hidden_dim]
 
+        # Створюємо позиційні індекси на основі порядку вузлів
+        pos_ids = torch.arange(x.size(0), device=device) % self.pos_embedding.num_embeddings
+        pos_emb = self.pos_embedding(pos_ids)  # [num_nodes, hidden_dim]
+        x = x + pos_emb
+
+        # Тепер групуємо вузли по графах (якщо batch не заданий, вважаємо, що це один граф)
+        if batch is None:
+            batch = torch.zeros(x.size(0), dtype=torch.long, device=device)
+
+        unique_batches = batch.unique()
+        x_seq_list = []
+        for b in unique_batches:
+            x_b = x[batch == b]  # [n_b, hidden_dim]
+            x_seq_list.append(x_b)
+        max_len = max([t.size(0) for t in x_seq_list])
+        # Паддимо послідовності до однакової довжини
+        padded_sequences = []
+        for t in x_seq_list:
+            pad_size = max_len - t.size(0)
+            if pad_size > 0:
+                pad = torch.zeros(pad_size, t.size(1), device=device)
+                t = torch.cat([t, pad], dim=0)
+            padded_sequences.append(t)
+        x_seq = torch.stack(padded_sequences, dim=0)  # [batch_size, max_len, hidden_dim]
+
+        # Обробка через TransformerEncoder
+        x_transformed = self.transformer_encoder(x_seq)  # [batch_size, max_len, hidden_dim]
+        # Агрегуємо за допомогою mean pooling (альтернативно можна використовувати CLS-токен)
+        x_graph = x_transformed.mean(dim=1)  # [batch_size, hidden_dim]
+
+        # Обробка документних ознак
         if doc_features is not None:
-            doc_emb = self.activation(self.doc_fc(doc_features))
+            doc_emb = self.activation(self.doc_fc(doc_features.to(device)))
         else:
-            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            doc_emb = torch.zeros(x_graph.size(0), self.doc_fc.out_features, device=device)
 
-        x = torch.cat([x, doc_emb], dim=1)
-        x = self.bnf(x)
-        x = self.activation(self.fusion_head(x))
-        x = self.dropout(x)
-        task_output = self.task_head(x)
-        time_output = self.time_head(x)
+        # Об'єднання графового представлення з документним
+        fusion = torch.cat([x_graph, doc_emb], dim=1)
+        fusion = self.fusion_bn(fusion)
+        fusion = self.activation(self.fusion_fc(fusion))
+        fusion = self.dropout(fusion)
+
+        task_output = self.task_head(fusion)
+        time_output = self.time_head(fusion)
         return task_output, time_output
-
 def create_optimizer(model, learning_rate=0.001):
     """
     Створює оптимізатор для навчання моделі.
@@ -293,7 +347,7 @@ def simplify_bpmn_id(raw_id: str) -> str:
     match = re.match(r'^([^_]+_[^_]+)', raw_id)
     return match.group(1) if match else raw_id
 
-def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=None):
+def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=100):
     """
     Prepares data for GNN prediction (next activity and time) for dynamic graphs.
     :param normal_graphs: Registry of normal graphs.

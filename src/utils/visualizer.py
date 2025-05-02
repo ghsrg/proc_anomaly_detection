@@ -14,7 +14,12 @@ from graphviz import Digraph
 import inspect
 import torch.nn as nn
 import seaborn as sns
+from sklearn.metrics import confusion_matrix, r2_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 from sklearn.metrics import confusion_matrix
+from matplotlib.colors import LogNorm
 
 logger = get_logger(__name__)
 
@@ -438,6 +443,359 @@ def visualize_activity_train_vs_val_accuracy_with_regression(activity_train_vs_v
     else:
         plt.show()
 
+def plot_regression_by_architecture(
+    df,
+    chart_title="Regression by Architecture",
+    data_type_filter="bpmn",
+    arhitec_filter=None,
+    seed_filter=None,
+    group_seed=False,
+    group_arhitec=False,
+    figsize=(10, 10),
+    poly_level=2,
+    ylim=(0, 1),
+    file_path=None
+):
+    """
+    Побудова scatter + поліноміальної регресії по архітектурах для заданого режиму.
+
+    Параметри:
+    - df: DataFrame з колонками: train_count, val_accuracy, architecture, mode, seed
+    - data_type_filter: 'bpmn' або 'logs'
+    - arhitec_filter: список архітектур (опціонально)
+    - seed_filter: фільтр по seed (опціонально)
+    - group_seed: якщо True, середнє по seed
+    - group_arhitec: якщо True, середнє по architecture
+    - poly_level: порядок полінома (1 = лінійна, 2 = квадратична і т.д.)
+    - ylim: межі по Y
+    - file_path: шлях до збереження графіка
+    """
+
+    filtered_df = df[df["mode"] == data_type_filter]
+    if seed_filter is not None:
+        filtered_df = filtered_df[filtered_df["seed"] == seed_filter]
+    if arhitec_filter:
+        filtered_df = filtered_df[filtered_df["architecture"].isin(arhitec_filter)]
+
+    # Групування по seed (усереднення)
+    if group_seed:
+        filtered_df = (
+            filtered_df.groupby(["architecture", "train_count"])
+            .agg({"val_accuracy": "mean"})
+            .reset_index()
+        )
+        filtered_df["seed"] = "avg"
+
+    # Групування по архітектурі (усереднення по train_count)
+    if group_arhitec:
+        filtered_df = (
+            filtered_df.groupby(["train_count"])
+            .agg({"val_accuracy": "mean"})
+            .reset_index()
+        )
+        filtered_df["architecture"] = "Average"
+
+    plt.figure(figsize=figsize)
+
+    architectures = filtered_df["architecture"].unique()
+
+    for arch in architectures:
+        sub_df = filtered_df[filtered_df["architecture"] == arch]
+        sub_df = sub_df.dropna(subset=["val_accuracy"])
+        x = sub_df["train_count"].values
+        y = sub_df["val_accuracy"].values
+        if len(x) > poly_level:
+            coeffs = np.polyfit(x, y, deg=poly_level)
+            poly = np.poly1d(coeffs)
+            x_vals = np.linspace(min(x), max(x), 200)
+            y_vals = poly(x_vals)
+            r2 = r2_score(y, poly(x))
+            plt.plot(x_vals, y_vals, linestyle="--", label=f"{arch} (R²={r2:.2f})")
+            plt.scatter(x, y, alpha=0.4)
+
+    plt.xlabel("Train Appearance Count", fontsize=20)
+    plt.ylabel("Validation Accuracy", fontsize=20)
+    plt.title(chart_title, fontsize=24)
+    plt.tick_params(axis='both', labelsize=18)
+    plt.ylim(ylim)
+    plt.grid(True)
+    plt.legend(bbox_to_anchor=(1.0, 1), loc='upper left', fontsize=16)
+    plt.tight_layout()
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+def plot_architecture_radar_by_metric(
+    df,
+    chart_title="Radar Chart by Architecture",
+    data_type_filter=None,
+    seed_filter=None,  # якщо вказаний — фільтруємо, якщо ні — усереднюємо
+    metrics=None,
+    metric_labels=None,
+    figsize=(8, 8),
+    normalize=False,
+    file_path=None
+):
+    """
+    Побудова Radar Chart, де вершини — архітектури, а лінії — метрики.
+
+    Параметри:
+    - df: DataFrame зі статистикою по архітектурах
+    - chart_title: заголовок діаграми
+    - data_type_filter: 'logs', 'bpmn' або None
+    - seed_filter: int або None. Якщо None — рахується середнє по seed
+    - metrics: список метрик (за замовчуванням: accuracy, top-3, 1-OOS)
+    - metric_labels: підписи до метрик
+    - figsize: розмір полотна
+    - normalize: нормалізувати метрики в [0,1]
+    - file_path: шлях до збереження (PNG)
+    """
+    df = df.copy()
+    df["1 - OOS Rate"] = 1 - df["val_out_of_scope_rate"]
+
+    if data_type_filter:
+        df = df[df["data_type"] == data_type_filter]
+
+    if seed_filter is not None:
+        df = df[df["seed"] == seed_filter]
+    else:
+        df = df.groupby(["architecture", "data_type"])[
+            ["val_accuracy", "val_top_k_accuracy", "1 - OOS Rate"]
+        ].mean().reset_index()
+
+    if not metrics:
+        metrics = ["val_accuracy", "val_top_k_accuracy", "1 - OOS Rate"]
+    if not metric_labels:
+        metric_labels = ["Accuracy", "Top-3 Accuracy", "1 - OOS Rate"]
+
+    architectures = df["architecture"].tolist()
+    num_vars = len(architectures)
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
+
+    for metric, label in zip(metrics, metric_labels):
+        values = df[metric].tolist()
+        if normalize and max(values) > 0:
+            values = [v / max(values) for v in values]
+        values += values[:1]
+        ax.plot(angles, values, label=label)
+        ax.fill(angles, values, alpha=0.1)
+
+    ax.set_title(chart_title, size=14, y=1.1)
+    ax.set_theta_offset(np.pi / 2)
+    ax.set_theta_direction(-1)
+    ax.set_thetagrids(np.degrees(angles[:-1]), architectures)
+    ax.set_ylim(0, 1)
+    ax.grid(True)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left' ,fontsize=12)
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+def plot_class_bar_chart(
+    df,
+    class_dict,
+    metric_list,
+    metric_labels=None,
+    class_labels=None,
+    chart_title="Порівняння класів архітектур",
+    figsize=(8, 6),
+    file_path=None
+):
+    """
+    Побудова стовпчастої діаграми з середніми метриками по класах архітектур.
+
+    Параметри:
+    - df: DataFrame (включно з колонками: architecture, seed, метрики)
+    - class_dict: словник {"назва класу": [архітектури]}
+    - metric_list: перелік метрик, які будемо відображати
+    - metric_labels: підписи до метрик (опційно)
+    - class_labels: список назв класів (опційно)
+    - chart_title: заголовок графіка
+    - figsize: розміри полотна
+    - file_path: шлях до збереження (PNG)
+    """
+    plot_data = []
+
+    for cls_name, arch_list in class_dict.items():
+        class_subset = df[df["architecture"].isin(arch_list)]
+        class_avg = class_subset.groupby("architecture")[metric_list].mean().mean()
+        for i, metric in enumerate(metric_list):
+            label = metric_labels[i] if metric_labels else metric
+            plot_data.append({
+                "Клас": cls_name,
+                "Метрика": label,
+                "Значення": class_avg[metric]
+            })
+
+    plot_df = pd.DataFrame(plot_data)
+
+    plt.figure(figsize=figsize)
+    sns.barplot(data=plot_df, x="Клас", y="Значення", hue="Метрика")
+    plt.title(chart_title)
+    plt.ylabel("Значення метрик")
+    plt.xlabel("")
+    plt.legend(title="", bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
+    plt.tight_layout()
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+def plot_metric_over_epochs(
+        df,
+        chart_title="Metric Over Epochs",
+        data_type_filter=None,
+        seed_filter=None,
+        max_epoch=None,
+        ylim=(0, 1),
+        figsize=(14, 6),
+        loc='upper left',
+        file_path=None
+):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    filtered_df = df.copy()
+
+    if data_type_filter:
+        filtered_df = filtered_df[filtered_df["data_type"] == data_type_filter]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з data_type фільтрами.")
+            return
+
+    if seed_filter is not None:
+        filtered_df = filtered_df[filtered_df["seed"] == seed_filter]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з seed фільтрами.")
+            return
+    else:
+        # Усереднення по seed
+        filtered_df = (
+            filtered_df.groupby(["architecture", "data_type", "epoch"])
+            .agg({"metric_value": "mean"})
+            .reset_index()
+        )
+
+    if max_epoch is not None:
+        filtered_df = filtered_df[filtered_df["epoch"] <= max_epoch]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з epoch фільтрами.")
+            return
+
+    # Архітектури
+    architectures = filtered_df["architecture"].unique()
+    num_arch = len(architectures)
+
+    # Палітра + товщина
+    palette = sns.color_palette("husl", n_colors=num_arch) #deep
+    linewidths = [0.5 if i % 2 == 0 else 1.25 for i in range(num_arch)]
+
+    # Побудова графіку
+    plt.figure(figsize=figsize)
+    for i, arch in enumerate(architectures):
+        arch_df = filtered_df[filtered_df["architecture"] == arch]
+        plt.plot(
+            arch_df["epoch"],
+            arch_df["metric_value"],
+            label=arch,
+            color=palette[i],
+            linewidth=linewidths[i]
+        )
+
+    plt.title(chart_title, fontsize=24)
+    plt.xlabel("Epoch", fontsize=20)
+    plt.ylabel("Metric Value", fontsize=20)
+    plt.tick_params(axis='both', labelsize=18)
+    plt.ylim(ylim)
+    plt.grid(True)
+    plt.legend(loc=loc, fontsize=16)
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
+def plot_metric_over_epochs2(
+    df,
+    chart_title="Metric Over Epochs",
+    data_type_filter=None,
+    seed_filter=None,
+    max_epoch=None,
+    figsize=(14, 6),
+    file_path=None
+):
+    """
+    Побудова графіку зміни метрики по епохах для різних GNN-архітектур.
+
+    Параметри:
+    - df: pandas DataFrame (з колонками: architecture, data_type, seed, epoch, metric_value)
+    - chart_title: заголовок графіку
+    - data_type_filter: 'logs' або 'bpmn' або None
+    - seed_filter: int або None
+    - max_epoch: максимальне значення епохи (обрізання по осі X)
+    - figsize: розмір графіку
+    """
+    # Копія і фільтрація
+    filtered_df = df.copy()
+    if data_type_filter:
+        filtered_df = filtered_df[filtered_df["data_type"] == data_type_filter]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з data_type фільтрами.")
+            return
+    if seed_filter is not None:
+        filtered_df = filtered_df[filtered_df["seed"] == seed_filter]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з seed фільтрами.")
+            return
+    if max_epoch is not None:
+        filtered_df = filtered_df[filtered_df["epoch"] <= max_epoch]
+        if filtered_df.empty:
+            print("⚠️ Немає даних для побудови графіку з epoch фільтрами.")
+            return
+
+    # Побудова графіку
+    plt.figure(figsize=figsize)
+    sns.lineplot(
+        data=filtered_df,
+        x="epoch",
+        y="metric_value",
+        hue="architecture",
+        marker="o",
+        linewidth=0.75
+    )
+    plt.title(chart_title)
+    plt.xlabel("Epoch")
+    plt.ylabel("Metric Value")
+    plt.grid(True)
+    plt.legend(title="Architecture", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
 
 def visualize_distribution(node_distribution, edge_distribution=None, prefix_distribution=None, file_path=None):
     """
@@ -495,12 +853,70 @@ def visualize_distribution(node_distribution, edge_distribution=None, prefix_dis
         plt.show()
 
 
+def plot_avg_epoch_time_bar(
+        df,
+        chart_title="Середній Час Навчання На Епоху",
+        data_type_filter="bpmn",
+        seed_filter=None,
+        figsize=(18, 10),
+        file_path=None
+):
+    """
+    Побудова горизонтальної діаграми середнього часу навчання на епоху.
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from sklearn.metrics import confusion_matrix
-from matplotlib.colors import LogNorm
+    Параметри:
+    - df: DataFrame, що містить spend_time, epoch, architecture, data_type, seed
+    - chart_title: заголовок графіку
+    - data_type_filter: 'bpmn' або 'logs'
+    - seed_filter: int або None (усереднення по seed)
+    - figsize: розмір графіку
+    - file_path: шлях до збереження
+    """
+
+    filtered_df = df[df["data_type"] == data_type_filter].copy()
+    if seed_filter is not None:
+        filtered_df = filtered_df[filtered_df["seed"] == seed_filter]
+
+    # Обчислення часу на епоху
+    filtered_df["time_per_epoch"] = filtered_df["spend_time"] / filtered_df["epoch"]
+
+    # Усереднення по архітектурах
+    avg_time_df = (
+        filtered_df.groupby("architecture")["time_per_epoch"]
+        .mean()
+        .reset_index()
+        .sort_values("time_per_epoch", ascending=False)
+    )
+
+    # Побудова діаграми з колірною палітрою від червоного до зеленого
+    norm = plt.Normalize(avg_time_df["time_per_epoch"].min(), avg_time_df["time_per_epoch"].max())
+    sm = plt.cm.ScalarMappable(cmap="RdYlGn_r", norm=norm)
+    colors = [sm.to_rgba(val) for val in avg_time_df["time_per_epoch"]]
+
+    # Побудова графіка
+    plt.figure(figsize=figsize)
+    sns.barplot(
+        data=avg_time_df,
+        y="architecture",
+        x="time_per_epoch",
+        palette=colors
+    )
+    plt.title(chart_title, fontsize=24)
+    plt.xlabel("Середній час навчання на епоху (сек)", fontsize=20)
+    plt.ylabel("Архітектура", fontsize=20)
+    plt.tick_params(axis='both', labelsize=18)
+
+    plt.grid(True, axis="x", linestyle="--", alpha=0.5)
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
 
 def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_path=None, top_k=None,
                                 global_node_dict=None):
@@ -577,6 +993,122 @@ def visualize_confusion_matrix(confusion_matrix_object, class_labels=None, file_
         #save_confusion_matrix_to_csv(cm, class_labels, file_path + '_topk')
     else:
         plt.show()
+
+
+def visualize_aggregated_conf_matrix_old(
+    cm_df,
+    title="Aggregated Confusion Matrix",
+    file_path=None,
+    top_k=None,
+    use_log_scale=True
+):
+    cm = cm_df.values
+    labels = cm_df.index.tolist()
+
+    if top_k is not None:
+        correct = np.diag(cm)
+        top_k_indices = np.argsort(correct)[::-1][:top_k]
+        cm = cm[np.ix_(top_k_indices, top_k_indices)]
+        labels = [labels[i] for i in top_k_indices]
+
+    plt.figure(figsize=(min(1 + 0.5 * len(labels), 20), min(1 + 0.5 * len(labels), 18)))
+
+    # Лог-норм з білим кольором для 0
+    norm = LogNorm(vmin=cm[cm > 0].min(), vmax=cm.max()) if use_log_scale else None
+    fmt = ".2g" if cm.dtype.kind == "f" else "d"  # короткий формат без зайвих нулів
+
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt=fmt,
+        cmap="Blues",
+        norm=norm,
+        xticklabels=labels,
+        yticklabels=labels,
+        linewidths=0.5,
+        linecolor="gray"
+    )
+
+    plt.title(title)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+# Оновлення функції: фіксуємо 3 знаки після крапки, навіть для малих значень, і прибираємо нулі
+# Оновлена функція форматування значень підписи з умовною точністю
+# Оновлена функція: пусті клітинки (нулі) тепер білі на heatmap
+def visualize_aggregated_conf_matrix(
+    cm_df,
+    title="Aggregated Confusion Matrix",
+    file_path=None,
+    top_k=None,
+    use_log_scale=True
+):
+    cm = cm_df.values
+    labels = cm_df.index.tolist()
+
+    if top_k is not None:
+        correct = np.diag(cm)
+        top_k_indices = np.argsort(correct)[::-1][:top_k]
+        cm = cm[np.ix_(top_k_indices, top_k_indices)]
+        labels = [labels[i] for i in top_k_indices]
+
+    # Формат аннотацій: умовна точність
+    def format_cell(x):
+        if x == 0:
+            return ""
+        elif x >= 100:
+            return f"{x:.0f}"
+        elif x >= 10:
+            return f"{x:.1f}".rstrip("0").rstrip(".")
+        elif x >= 1:
+            return f"{x:.2f}".rstrip("0").rstrip(".")
+        else:
+            return f"{x:.2f}".rstrip("0").rstrip(".")
+
+    annotations = np.vectorize(format_cell)(cm)
+
+    # Маска для білих (нулевих) клітинок
+    mask = cm == 0
+
+    plt.figure(figsize=(min(1 + 0.5 * len(labels), 20), min(1 + 0.5 * len(labels), 18)))
+
+    norm = LogNorm(vmin=cm[cm > 0].min(), vmax=cm.max()) if use_log_scale else None
+
+    sns.heatmap(
+        cm,
+        annot=annotations,
+        fmt="",
+        cmap="Blues",
+        norm=norm,
+        xticklabels=labels,
+        yticklabels=labels,
+        linewidths=0.5,
+        linecolor="gray",
+        mask=mask,            # приховати нульові клітинки
+        cbar_kws={"label": "Value"}
+    )
+
+    plt.title(title)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
 
 
 def visualize_confusion_matrix_bk(confusion_matrix_object, class_labels, file_path=None):

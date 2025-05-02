@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GATConv, global_mean_pool
+from torch_geometric.nn import GATv2Conv, global_mean_pool
 from torch_geometric.data import Data
 from src.utils.file_utils import join_path, load_graph
 from sklearn.metrics import precision_score,accuracy_score, recall_score, f1_score, confusion_matrix, mean_absolute_error, mean_squared_error, r2_score
@@ -11,56 +11,57 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class GATConv_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim,  doc_dim, edge_dim=None, num_nodes=None):
-        super(GATConv_pr, self).__init__()
+class GATv2_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+        super(GATv2_pr, self).__init__()
 
-        self.conv1 = GATConv(input_dim, hidden_dim)
-        self.conv2 = GATConv(hidden_dim, hidden_dim)
-        self.conv3 = GATConv(hidden_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.bn2 = nn.BatchNorm1d(hidden_dim)
-        self.bn3 = nn.BatchNorm1d(hidden_dim)
-
-        self.dropout = nn.Dropout(p=0.3)
+        self.gat1 = GATv2Conv(input_dim, hidden_dim, heads=4, concat=True, dropout=0.3)
+        self.gat2 = GATv2Conv(hidden_dim * 4, hidden_dim, heads=1, concat=True, dropout=0.3)
 
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
-        self.global_pool = global_mean_pool
+        self.fusion_bn = nn.BatchNorm1d(hidden_dim * 2)
+        self.fusion_fc = nn.Linear(hidden_dim * 2, hidden_dim)
+
+        self.dropout = nn.Dropout(0.3)
         self.activation = nn.ReLU()
-        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
-        self.bnf = nn.BatchNorm1d(hidden_dim * 2)
+
         self.task_head = nn.Linear(hidden_dim, output_dim)
         self.time_head = nn.Linear(hidden_dim, 1)
 
+        self.global_pool = global_mean_pool
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-
-        edge_attr = getattr(data, 'edge_features', None)
-        #edge_attr = getattr(data, 'edge_attr', None)
-
+        x = data.x
+        edge_index = data.edge_index
+        batch = getattr(data, 'batch', torch.zeros(x.size(0), dtype=torch.long, device=x.device))
         doc_features = getattr(data, 'doc_features', None)
 
-        x = self.activation(self.conv1(x, edge_index, edge_attr))
-        x = self.activation(self.conv2(x, edge_index, edge_attr))
-        x = self.bn2(x)
-        x = self.activation(x)
+        # GATv2 шари
+        x = self.activation(self.gat1(x, edge_index))
         x = self.dropout(x)
-        x = self.global_pool(x, batch)
+        x = self.activation(self.gat2(x, edge_index))
+        x = self.dropout(x)
 
+        # Пулінг
+        x_pooled = self.global_pool(x, batch)
+
+        # Документ
         if doc_features is not None:
             doc_emb = self.activation(self.doc_fc(doc_features))
         else:
-            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            doc_emb = torch.zeros(x_pooled.shape[0], self.doc_fc.out_features, device=x.device)
 
-        x = torch.cat([x, doc_emb], dim=1)
-        x = self.bnf(x)
-        x = self.activation(self.fusion_head(x))
-        x = self.dropout(x)
-        task_output = self.task_head(x)
-        time_output = self.time_head(x)
+        # Об'єднання
+        fusion = torch.cat([x_pooled, doc_emb], dim=1)
+        fusion = self.fusion_bn(fusion)
+        fusion = self.activation(self.fusion_fc(fusion))
+        fusion = self.dropout(fusion)
+
+        # Виходи
+        task_output = self.task_head(fusion)
+        time_output = self.time_head(fusion)
+
         return task_output, time_output
-
 def create_optimizer(model, learning_rate=0.001):
     """
     Створює оптимізатор для навчання моделі.
@@ -446,7 +447,7 @@ def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=None):
 
     return data_list, max_features, max_doc_dim, global_node_dict
 
-def prepare_data_log_only(normal_graphs,max_node_count=None):
+def prepare_data_log_only(normal_graphs,max_node_count=None,max_edge_count=None):
     data_list = []
     max_features = 0
     max_doc_dim = 0

@@ -1,6 +1,6 @@
 
 from src.utils.logger import get_logger
-from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
+from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data,  load_prepared_data, load_global_statistics_from_json, save2csv, save_activity_stats_to_excel
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix, visualize_train_vs_val_accuracy, visualize_activity_train_vs_val_accuracy_with_regression
 from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
@@ -26,7 +26,10 @@ import src.core.core_GRUGAT_pr as GRUGAT_pr_core
 import src.core.core_TransformerMLP_pr as TransformerMLP_pr_core
 import src.core.core_GraphMixer_pr as GraphMixer_pr_core
 import src.core.core_GGNN_pr as GGNN_pr_core
+import src.core.core_MixHop_pr as MixHop_pr_core
 import src.core.core_GPRGNN_pr as GPRGNN_pr_core
+import src.core.core_GATv2_pr as GATv2_pr_core
+import src.core.core_Graphormer_pr as Graphormer_pr_core
 
 import src.core.core_EGCN_H_pr as EGCN_H_pr_core
 
@@ -56,22 +59,19 @@ MODEL_MAP = {
     "DFAGNN_pr": (DFAGNN_pr_core),
     "DeepGCN_pr": (DeepGCN_pr_core),
     "TemporalGAT_pr": (TemporalGAT_pr_core),
-    "GRUGAT_pr": (GRUGAT_pr_core),#
-    "TGCN_pr": (TGCN_pr_core),
-    "TransformerMLP_pr": (TransformerMLP_pr_core),
-    "GraphMixer_pr": (GraphMixer_pr_core),
+    "TransformerMLP_pr": (TransformerMLP_pr_core), #*довго
+    "MixHop_pr": (MixHop_pr_core),
+    "GraphMixer_pr": (GraphMixer_pr_core), #*довго
     "GGNN_pr": (GGNN_pr_core),
+    "GATv2_pr": (GATv2_pr_core),
     "GPRGNN_pr": (GPRGNN_pr_core),
-    # GCN DGCNN
-    #EGCN_O_pr
-    #DySAT
-    #GRU-GNN / LSTM-GNN
-    #GraphRNN
-    # DFA-GNN
-    # HiGPP
-    # GGNN
-    # Multi-perspective Enriched Instance Graphs
-    # MiTFM (Transformer + Multi-view Graph Fusion)
+    "Graphormer_pr": (Graphormer_pr_core),#*довго
+
+
+    "GRUGAT_pr": (GRUGAT_pr_core), # !не працює треба доробляти prepeare_date
+    "EGCN_H_pr": (EGCN_H_pr_core),# !не працює треба доробляти prepeare_date
+    "TGCN_pr": (TGCN_pr_core), #!не працює треба доробляти prepeare_date
+
     "GATConv_pr": (GATConv_pr_core)#,
 
 }
@@ -90,7 +90,7 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=0.1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    fraction=1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
     seed = 9467
 ):
     """
@@ -300,6 +300,15 @@ def train_model_pr(
             visualize_activity_train_vs_val_accuracy_with_regression(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
             #visualize_train_vs_val_accuracy(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
 
+            train_vs_val_accuracy_stat_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy_stat.xlsx"
+            save_activity_stats_to_excel(
+                activity_stats=val_stats["activity_train_vs_val_accuracy"],
+                architecture=model_type,
+                mode=pr_mode,
+                seed=seed,
+                file_path=train_vs_val_accuracy_stat_path
+            )
+
             stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_seed{seed}_statistics'])
             save2csv(stats, stat_path)
 
@@ -315,23 +324,23 @@ def train_model_pr(
         print(f"Тривалість навчання: {training_duration}")
         logger.info(f"Час завершення навчання: {end_time}")
         logger.info(f"Тривалість навчання: {training_duration}")
-        test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
+#        test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
         # Збереження фінальної статистики з тестуванням
         #save_training_diagram(stats,
         #                      f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",
         #                      test_stats, title=f"{model_type} Training and Validation Metrics")
 
-        stats["epochs"].append('Testing')
-        stats["train_loss"].append(train_loss)
-        if "val_accuracy" in stats: stats["val_accuracy"].append(test_stats["accuracy"])
-        if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
-        if "val_precision" in stats: stats["val_precision"].append(test_stats.get("precision", 0))
-        if "val_recall" in stats: stats["val_recall"].append(test_stats.get("recall", 0))
-        if "val_f1_score" in stats: stats["val_f1_score"].append(test_stats.get("f1_score", 0))
-        stats["spend_time"].append('')
+     #   stats["epochs"].append('Testing')
+     #   stats["train_loss"].append(train_loss)
+     #   if "val_accuracy" in stats: stats["val_accuracy"].append(test_stats["accuracy"])
+     #   if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(test_stats["top_k_accuracy"])
+     #   if "val_precision" in stats: stats["val_precision"].append(test_stats.get("precision", 0))
+     #   if "val_recall" in stats: stats["val_recall"].append(test_stats.get("recall", 0))
+     #   if "val_f1_score" in stats: stats["val_f1_score"].append(test_stats.get("f1_score", 0))
+     #   stats["spend_time"].append('')
 
         stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_seed{seed}_statistics'])
-        save2csv(stats, stat_path)
+  #      save2csv(stats, stat_path)
         logger.info(f"Навчання завершено для моделі {model_type}")
 
         # Збереження матриці плутанини

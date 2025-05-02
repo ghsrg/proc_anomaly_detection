@@ -101,59 +101,53 @@ def simplify_bpmn_id(raw_id: str) -> str:
     match = re.match(r'^([^_]+_[^_]+)', raw_id)
     return match.group(1) if match else raw_id
 
-def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict=None, train_activity_counter=None):
+def train_epoch(model, data, optimizer, alpha=0, global_node_dict=None, train_activity_counter=None):
+    """
+    Навчання моделей, які очікують послідовність графів (List[List[Data]]).
+    Автоматично обгортає окремі Data-об'єкти у послідовності при потребі.
+    """
+    # Якщо передано результат prepare_data() — дістаємо перший елемент
+    if isinstance(data, (tuple, list)) and isinstance(data[0], Data):
+        # Перетворюємо List[Data] -> List[List[Data]] (один граф — одна "послідовність")
+        data = [[d] for d in data]
+    elif isinstance(data, (tuple, list)) and isinstance(data[0], list):
+        # List[List[Data]] — ок
+        pass
+    else:
+        raise ValueError(f"Невідомий формат даних: {type(data)}")
+
     model.train()
     total_loss = 0
-    num_batches = (len(data) + batch_size - 1) // batch_size
+    device = model.task_head.weight.device
 
-    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", position=1,leave=False, dynamic_ncols=True):
-
-        start_idx = batch_idx * batch_size
-        end_idx = min((batch_idx + 1) * batch_size, len(data))
-        batch = data[start_idx:end_idx]
-
-        batch_tensor = torch.cat([torch.full((item.x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)], dim=0)
-        x = torch.cat([item.x for item in batch], dim=0)
-        edge_index = torch.cat([item.edge_index for item in batch], dim=1)
-        edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
-        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
-        timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], 'timestamps') else None
-
-        y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
-        y_time = torch.stack([item.time_target for item in batch]).view(-1)
-
-        # Переносимо на GPU якщо є
-        x, edge_index, edge_attr, batch_tensor, doc_features = [t.to(model.task_head.weight.device) if t is not None else None for t in [x, edge_index, edge_attr, batch_tensor, doc_features]]
-        y_task = y_task.to(model.task_head.weight.device)
-        y_time = y_time.to(model.task_head.weight.device)
-
+    for sequence in tqdm(data, desc="Навчання послідовностей", unit="seq", dynamic_ncols=True):
         optimizer.zero_grad()
-        outputs_task, outputs_time = model.forward(
-            type("Batch", (object,), {
-                "x": x,
-                "edge_index": edge_index,
-                "edge_features": edge_attr,
-                "batch": batch_tensor,
-                "doc_features": doc_features,
-                "timestamps": timestamps
-            })
-        )
 
-        loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
-        loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
-        loss = loss_task + alpha * loss_time
+        try:
+            doc_features = torch.stack([d.doc_features for d in sequence], dim=0).to(device)
+            y_task = torch.tensor([d.y.item() for d in sequence], dtype=torch.long).to(device)
+            y_time = torch.stack([d.time_target for d in sequence]).view(-1).to(device)
 
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
+            outputs_task, outputs_time = model(sequence, doc_features)
 
-        if global_node_dict is not None and train_activity_counter is not None:
-            for label in y_task.cpu().numpy():
-                if label in global_node_dict.values():
-                    train_activity_counter[label] += 1
+            loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
+            loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
+            loss = loss_task + alpha * loss_time
 
-    avg_loss = total_loss / num_batches
-    return avg_loss
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+            if global_node_dict is not None and train_activity_counter is not None:
+                for label in y_task.cpu().numpy():
+                    if label in global_node_dict.values():
+                        train_activity_counter[label] += 1
+
+        except Exception as e:
+            print(f"❌ Пропущено: {e}")
+            continue
+
+    return total_loss / len(data)
 
 def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
     model.eval()

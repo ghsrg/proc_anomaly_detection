@@ -62,6 +62,117 @@ def aggregate_statistics(directory_path):
     final_df = pd.DataFrame(all_results)
     return final_df
 
+def load_and_aggregate_confusion_matrices(
+    folder_path,
+    data_type_filter="bpmn",
+    reduction="avg",  # або 'sum'
+    normalize=True
+):
+    """
+    Зчитує всі .xlsx confusion матриці з вказаної папки, фільтрує за типом (logs/bpmn),
+    і повертає одну зведену матрицю.
+
+    Параметри:
+    - folder_path: шлях до папки з .xlsx файлами матриць
+    - data_type_filter: 'logs' або 'bpmn'
+    - reduction: 'avg' або 'sum'
+    - normalize: чи нормалізувати по рядках (True/False)
+
+    Повертає:
+    - aggregated_df: фінальна матриця pandas.DataFrame
+    """
+    matrices = []
+
+    for filename in os.listdir(folder_path):
+        if filename.endswith("CM.png_full.xlsx") and data_type_filter in filename:
+            full_path = os.path.join(folder_path, filename)
+            try:
+                df = pd.read_excel(full_path, index_col=0)
+                matrices.append(df)
+            except Exception as e:
+                print(f"❌ Помилка при зчитуванні {filename}: {e}")
+
+    if not matrices:
+        print("⚠️ Немає матриць для агрегації.")
+        return None
+
+    # Вирівняти порядок індексів/стовпців
+    all_labels = sorted(set().union(*[m.index for m in matrices]))
+    matrices = [m.reindex(index=all_labels, columns=all_labels, fill_value=0) for m in matrices]
+
+    # Агрегація
+    if reduction == "sum":
+        aggregated_df = sum(matrices)
+    else:
+        aggregated_df = sum(matrices) / len(matrices)
+
+    # Нормалізація по рядках
+    if normalize:
+        aggregated_df = aggregated_df.div(aggregated_df.sum(axis=1), axis=0).fillna(0)
+
+    return aggregated_df
+
+def combine_activity_stat_files(directory):
+    all_dfs = []
+    for filename in os.listdir(directory):
+        if filename.endswith("_accuracy_stat.xlsx"):
+            df = pd.read_excel(os.path.join(directory, filename))
+            all_dfs.append(df)
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    return combined_df
+
+def save_activity_stats_to_excel(activity_stats, architecture, mode, seed, file_path):
+    """
+    Зберігає словник activity_train_vs_val_accuracy у Excel із додатковими колонками.
+
+    Parameters:
+    - activity_stats: dict (node_id -> {"train_count": ..., "val_accuracy": ...})
+    - architecture: назва архітектури (наприклад: "GAT")
+    - mode: режим (наприклад: "bpmn" або "logs")
+    - file_path: шлях до Excel файлу (наприклад: "activity_distributions.xlsx")
+    """
+    df = pd.DataFrame.from_dict(activity_stats, orient="index")
+    df.reset_index(inplace=True)
+    df.rename(columns={"index": "node_id"}, inplace=True)
+    df["architecture"] = architecture
+    df["mode"] = mode
+    df["seed"] = seed
+    df.to_excel(file_path, index=False)
+def aggregate_metric_over_epochs(directory_path, metric_name):
+    """
+    Збирає задану метрику по епохах для кожної архітектури, seed і типу даних (logs/bpmn).
+
+    Повертає DataFrame у форматі:
+    | architecture | data_type | seed | epoch | metric_value |
+    """
+    all_records = []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith("statistics.xlsx"):
+            full_path = os.path.join(directory_path, filename)
+
+            match = re.match(r"(.+?)(?:_pr)?_(logs|bpmn)_seed(\d+)_statistics\.xlsx", filename)
+            if match:
+                architecture, data_type, seed = match.groups()
+
+                try:
+                    df = pd.read_excel(full_path)
+
+                    if not df.empty and metric_name in df.columns:
+                        for idx, row in df.iterrows():
+                            record = {
+                                "architecture": architecture,
+                                "data_type": data_type,
+                                "seed": int(seed),
+                                "epoch": int(row['epochs']),
+                                "metric_value": row[metric_name]
+                            }
+                            all_records.append(record)
+                except Exception as e:
+                    print(f"Помилка при обробці {filename}: {e}")
+
+    return pd.DataFrame(all_records)
+
 def save_aggregated_statistics(df, output_path):
     """
     Зберігає агреговану таблицю у форматі Excel або CSV.

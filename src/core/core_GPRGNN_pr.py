@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import GPRGNN, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import torch.nn.functional as F
@@ -17,10 +17,13 @@ from tqdm import tqdm
 logger = get_logger(__name__)
 
 class GPRGNN_pr(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None, K=10):
         super(GPRGNN_pr, self).__init__()
 
-        self.gpr = GPRGNN(in_channels=input_dim, hidden_channels=hidden_dim, out_channels=hidden_dim, K=10, alpha=0.1)
+        self.convs = nn.ModuleList()
+        self.convs.append(GCNConv(input_dim, hidden_dim))
+        for _ in range(K - 1):
+            self.convs.append(GCNConv(hidden_dim, hidden_dim))
 
         self.doc_fc = nn.Linear(doc_dim, hidden_dim)
         self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
@@ -32,24 +35,23 @@ class GPRGNN_pr(nn.Module):
         self.task_head = nn.Linear(hidden_dim, output_dim)
         self.time_head = nn.Linear(hidden_dim, 1)
 
-        self.global_pool = global_mean_pool
-
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         doc_features = getattr(data, 'doc_features', None)
         batch = getattr(data, 'batch', None)
 
-        x = self.gpr(x, edge_index)
+        for conv in self.convs:
+            x = self.activation(conv(x, edge_index))
 
         if batch is None:
             batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
 
-        x = self.global_pool(x, batch)
+        x = global_mean_pool(x, batch)
 
         if doc_features is not None:
             doc_emb = self.activation(self.doc_fc(doc_features))
         else:
-            doc_emb = torch.zeros(x.shape[0], self.doc_fc.out_features, device=x.device)
+            doc_emb = torch.zeros(x.size(0), self.doc_fc.out_features, device=x.device)
 
         fusion = torch.cat([x, doc_emb], dim=1)
         fusion = self.bnf(fusion)
@@ -57,6 +59,7 @@ class GPRGNN_pr(nn.Module):
         fusion = self.dropout(fusion)
 
         return self.task_head(fusion), self.time_head(fusion)
+
 class TemporalEncoding(nn.Module):
     def __init__(self, dim):
         super().__init__()

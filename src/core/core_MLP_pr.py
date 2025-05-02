@@ -296,7 +296,7 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
         "activity_train_vs_val_accuracy": activity_train_vs_val_accuracy
     }
 
-def prepare_data_log_only(normal_graphs, max_node_count=None):
+def prepare_data_log_only(normal_graphs, max_node_count=None, max_edge_count=None):
     """
     Підготовка даних для навчання MLP (без використання структури графу).
     :param normal_graphs: Реєстр графів.
@@ -386,7 +386,9 @@ def prepare_data_log_only(normal_graphs, max_node_count=None):
                 x=x_mean.unsqueeze(0),  # потрібно [batch_size, feature_dim]
                 doc_features=doc_features,
                 y=torch.tensor([target_idx], dtype=torch.long),
-                time_target=time_target
+                time_target=time_target,
+                node_ids=inverse_node_map  # ⬅️ додано!
+
             )
 
             data_list.append(data)
