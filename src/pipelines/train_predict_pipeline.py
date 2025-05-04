@@ -1,3 +1,5 @@
+import sys
+import time
 
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data,  load_prepared_data, load_global_statistics_from_json, save2csv, save_activity_stats_to_excel
@@ -49,30 +51,31 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info(f"Використовується пристрій: {device}")
 
 MODEL_MAP = {
-    "MLP_pr": (MLP_pr_core),
-    "TGAT_pr": (TGAT_pr_core),
-    "EGCN_H_pr": (EGCN_H_pr_core),
-    "GCN_pr": (GCN_pr_core),
-    "MuseGNN_pr": (MuseGNN_pr_core),
-    "GraphSAGE_pr": (GraphSAGE_pr_core),
     "APPNP_pr": (APPNP_pr_core),
-    "DFAGNN_pr": (DFAGNN_pr_core),
     "DeepGCN_pr": (DeepGCN_pr_core),
-    "TemporalGAT_pr": (TemporalGAT_pr_core),
-    "TransformerMLP_pr": (TransformerMLP_pr_core), #*довго
-    "MixHop_pr": (MixHop_pr_core),
-    "GraphMixer_pr": (GraphMixer_pr_core), #*довго
-    "GGNN_pr": (GGNN_pr_core),
+    "DFAGNN_pr": (DFAGNN_pr_core),
+    "GATConv_pr": (GATConv_pr_core),
     "GATv2_pr": (GATv2_pr_core),
+    "GCN_pr": (GCN_pr_core),
+    "GGNN_pr": (GGNN_pr_core),
     "GPRGNN_pr": (GPRGNN_pr_core),
+    "GraphMixer_pr": (GraphMixer_pr_core), #*довго
     "Graphormer_pr": (Graphormer_pr_core),#*довго
+    "GraphSAGE_pr": (GraphSAGE_pr_core),
 
+    "MixHop_pr": (MixHop_pr_core),
+    "MLP_pr": (MLP_pr_core),
+    "MuseGNN_pr": (MuseGNN_pr_core),
+    "TemporalGAT_pr": (TemporalGAT_pr_core),
+    "TGAT_pr": (TGAT_pr_core),
+
+    "TransformerMLP_pr": (TransformerMLP_pr_core), #*довго
 
     "GRUGAT_pr": (GRUGAT_pr_core), # !не працює треба доробляти prepeare_date
     "EGCN_H_pr": (EGCN_H_pr_core),# !не працює треба доробляти prepeare_date
-    "TGCN_pr": (TGCN_pr_core), #!не працює треба доробляти prepeare_date
+    "TGCN_pr": (TGCN_pr_core) #!не працює треба доробляти prepeare_date
 
-    "GATConv_pr": (GATConv_pr_core)#,
+
 
 }
 
@@ -90,8 +93,9 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
-    seed = 9467
+    fraction=0.9, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    seed = 9467,
+    sleep = 0#9000 #3600година
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -104,6 +108,12 @@ def train_model_pr(
     :param learning_rate: Рівень навчання.
     :param batch_size: Розмір пакету для навчання.
     """
+    for remaining in range(sleep, 0, -1):
+        mins, secs = divmod(remaining, 60)
+        time_str = f"{mins:02}:{secs:02}"
+        print(f"\rЧекаю запуску... Залишилось: {time_str}", end="")
+        sys.stdout.flush()
+        time.sleep(1)
     try:
         logger.info(f"Запуск навчання для моделі прогнозу: {model_type}")
 

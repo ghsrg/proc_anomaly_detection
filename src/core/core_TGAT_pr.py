@@ -323,7 +323,7 @@ def calculate_statistics(model, val_data, global_node_dict, global_statistics, b
 
     }
 
-def prepare_data(normal_graphs):
+def prepare_data(normal_graphs,max_node_count, max_edge_count, limit=100):
     """
     Prepares data for GNN prediction (next activity and time) with TGAT timestamps variant 3.
     :param normal_graphs: Registry of normal graphs.
@@ -422,8 +422,10 @@ def prepare_data(normal_graphs):
         "PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate",
         "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
     ]
-
+    count = 0
     for idx, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів", total=len(normal_graphs)):
+        if limit and count >= limit:
+            break
         graph_file = row["graph_path"]
         doc_info = row.get("doc_info", {})
         full_path = join_path([NORMALIZED_PR_NORMAL_GRAPH_PATH, graph_file])
@@ -451,7 +453,7 @@ def prepare_data(normal_graphs):
             if data:
                 data_list.append(data)
                 max_doc_dim = max(max_doc_dim, data.doc_features.numel())
-
+        count += 1
     # Побудова глобального словника
     global_node_dict = {name: idx for idx, name in enumerate(sorted(global_node_set))}
 

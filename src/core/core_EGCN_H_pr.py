@@ -386,8 +386,6 @@ def prepare_data(normal_graphs, max_node_count, max_edge_count, limit=None):
     global_node_dict = {name: idx for idx, name in enumerate(sorted(global_node_set))}
     return data_sequences, max_features, max_doc_dim, global_node_dict
 
-
-
 def prepare_data_log_only(normal_graphs,max_node_count):
     data_list = []
     max_features = 0

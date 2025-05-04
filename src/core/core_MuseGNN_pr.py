@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class MuseGNN_pr(nn.Module):
+class MuseGNN_old_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
         super().__init__()
         print(f"📦 Init MuseGNN_pr with input_dim={input_dim}, output_dim={output_dim}")
@@ -70,6 +70,86 @@ class MuseGNN_pr(nn.Module):
         x = self.dropout(x)
 
         return self.task_head(x), self.time_head(x)
+
+
+class MuseGNN_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+        super().__init__()
+        print(f"📦 Init MuseGNN_pr with input_dim={input_dim}, output_dim={output_dim}")
+
+        # 3 різні GNN-перспективи
+        self.gcn = GCNConv(input_dim, hidden_dim)
+        self.sage = SAGEConv(input_dim, hidden_dim)
+        self.gat = GATConv(input_dim, hidden_dim, heads=1, concat=False)
+
+        self.activation = nn.ReLU()
+        self.global_pool = global_mean_pool
+
+        # Новий attention шар для зважування трьох перспектив
+        # Ми будемо приймати тензор розміру [B, 3, hidden_dim] та повертати ваги [B, 3, 1]
+        self.attn_layer = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+
+        # Документ
+        self.doc_fc = nn.Linear(doc_dim, hidden_dim)
+
+        # Злиття
+        # Якщо застосувати зважене сумування, то розмір буде [B, hidden_dim]
+        # і для об'єднання з документом зробимо наступну конкатенацію:
+        self.bnf = nn.LayerNorm(hidden_dim * 2)
+        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
+        self.dropout = nn.Dropout(0.3)
+
+        # Виходи
+        self.task_head = nn.Linear(hidden_dim, output_dim)
+        self.time_head = nn.Linear(hidden_dim, 1)
+
+    def forward(self, data_batch, doc_features=None):
+        device = self.task_head.weight.device
+        x = data_batch.x.to(device)
+        edge_index = data_batch.edge_index.to(device)
+        batch = data_batch.batch.to(device)
+
+        # Отримання представлень з трьох гілок
+        x1 = self.activation(self.gcn(x, edge_index))
+        x2 = self.activation(self.sage(x, edge_index))
+        x3 = self.activation(self.gat(x, edge_index))
+
+        # Глобальний пулінг для кожного представлення (розмір [B, hidden_dim])
+        x1_pooled = self.global_pool(x1, batch)
+        x2_pooled = self.global_pool(x2, batch)
+        x3_pooled = self.global_pool(x3, batch)
+
+        # Об'єднуємо в тензор [B, 3, hidden_dim]
+        x_views = torch.stack([x1_pooled, x2_pooled, x3_pooled], dim=1)
+
+        # Обчислюємо ваги для кожного погляду
+        # Для цього спочатку перетворюємо кожен вектор [B, hidden_dim] через attn_layer,
+        # отримуючи [B, 3, 1]
+        attn_scores = self.attn_layer(x_views)  # [B, 3, 1]
+        attn_weights = torch.softmax(attn_scores, dim=1)  # [B, 3, 1]
+
+        # Взважене сумування представлень
+        x_weighted = torch.sum(x_views * attn_weights, dim=1)  # [B, hidden_dim]
+
+        # Документні фічі
+        if doc_features is not None:
+            doc_emb = self.activation(self.doc_fc(doc_features.to(device)))  # [B, hidden_dim]
+        else:
+            doc_emb = torch.zeros((x_weighted.size(0), self.doc_fc.out_features), device=device)
+
+        # Об'єднуємо вектор із графа та документне представлення, конкатенуємо їх: [B, hidden_dim*2]
+        x_cat = torch.cat([x_weighted, doc_emb], dim=1)
+
+        x_cat = self.bnf(x_cat)
+        x_cat = self.activation(self.fusion_head(x_cat))
+        x_cat = self.dropout(x_cat)
+
+        return self.task_head(x_cat), self.time_head(x_cat)
+
 
 class TemporalEncoding(nn.Module):
     def __init__(self, dim):

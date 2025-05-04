@@ -2,7 +2,7 @@
 #from src.utils.logger import get_logger
 from src.utils.file_utils import aggregate_statistics, aggregate_metric_over_epochs, save_aggregated_statistics, load_and_aggregate_confusion_matrices, combine_activity_stat_files, save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import plot_metric_over_epochs, plot_architecture_radar_by_metric, plot_class_bar_chart,visualize_aggregated_conf_matrix, visualize_confusion_matrix, plot_avg_epoch_time_bar, plot_regression_by_architecture
+from src.utils.visualizer import plot_metric_over_epochs, visualize_diff_conf_matrix, plot_architecture_radar_by_metric,plot_regression_logs_vs_bpmn, plot_class_bar_chart,visualize_aggregated_conf_matrix, visualize_confusion_matrix, plot_avg_epoch_time_bar, plot_regression_by_architecture
 from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
 
 #logger = get_logger(__name__)
@@ -21,31 +21,54 @@ def run_analitics_mode(args):
     save_aggregated_statistics(final_df, final_df_file)
 
     combined_df = combine_activity_stat_files(LEARN_PR_DIAGRAMS_PATH) #комбінована статистика розподілу
-    final_df_ac_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'final_train_vs_val_accuracy_stat.xlsx'])
+    final_df_ac_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'final_train_vs_val_accuracy_all.xlsx'])
     save_aggregated_statistics(combined_df, final_df_ac_file)
 
-    cm_bpmn = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="bpmn", reduction="sum", normalize=True)
+    cm_bpmn = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="bpmn", reduction="avg", normalize=False)
+    cm_norm_bpmn = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="bpmn", reduction="avg", normalize=True)
     final_cm_bpmn_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'final_cm_bpmn.xlsx'])
     save_aggregated_statistics(cm_bpmn, final_cm_bpmn_file)
-    cm_logs = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="logs", reduction="sum", normalize=True)
+    cm_logs = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="logs", reduction="avg", normalize=False)
+    cm_norm_logs = load_and_aggregate_confusion_matrices(LEARN_PR_DIAGRAMS_PATH, data_type_filter="logs", reduction="avg", normalize=True)
     final_cm_logs_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'final_cm_log.xlsx'])
     save_aggregated_statistics(cm_logs, final_cm_logs_file)
+
+    graf_cm_diff_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_diff.png'])
+    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=60, top_k_mode="diff",min_value=4.1, normalize=False, title="Δ Confusion Matrix (BPMN - Logs)", file_path=graf_cm_diff_file)
+    graf_cm_norm_diff_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_norm_diff.png'])
+    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=60, top_k_mode="diff", min_value=0.01, normalize=True, title="Δ Confusion Matrix Normilized (BPMN - Logs)", file_path=graf_cm_norm_diff_file)
 
     graf_cm_bpmn_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_bpmn.png'])
     visualize_aggregated_conf_matrix(
         cm_df=cm_bpmn,
+        title="Confusion Matrix (BPMN)",
+        top_k=40,
+        use_log_scale=True,
+        file_path=graf_cm_bpmn_file
+    )
+    graf_cm_bpmn_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_norm_bpmn.png'])
+    visualize_aggregated_conf_matrix(
+        cm_df=cm_norm_bpmn,
         title="Normalized Confusion Matrix (BPMN)",
-        top_k=25,
-        use_log_scale=False,
+        top_k=40,
+        use_log_scale=True,
         file_path=graf_cm_bpmn_file
     )
 
     graf_cm_logs_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_logs.png'])
     visualize_aggregated_conf_matrix(
         cm_df=cm_logs,
+        title="Confusion Matrix (Logs)",
+        top_k=40,
+        use_log_scale=True,
+        file_path=graf_cm_logs_file
+    )
+    graf_cm_logs_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_norm_logs.png'])
+    visualize_aggregated_conf_matrix(
+        cm_df=cm_norm_logs,
         title="Normalized Confusion Matrix (Logs)",
-        top_k=25,
-        use_log_scale=False,
+        top_k=40,
+        use_log_scale=True,
         file_path=graf_cm_logs_file
     )
 
@@ -61,7 +84,37 @@ def run_analitics_mode(args):
         poly_level=4,
         figsize=(18, 10),
         ylim=(-0.05, 1.2),
+        xlim=(0, 3000),
         file_path = graf_regression_file
+    )
+
+    graf_regression_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_regression_logs.png'])
+    plot_regression_by_architecture(
+        df=combined_df,
+        chart_title="Average Regression Curve (Logs)",
+        data_type_filter="logs",
+        arhitec_filter=None,
+        seed_filter=None,
+        group_arhitec=False,
+        group_seed=True,
+        poly_level=4,
+        figsize=(18, 10),
+        ylim=(-0.05, 1.2),
+        xlim=(0, 3000),
+        file_path = graf_regression_file
+    )
+    graf_regression_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_regression_grouped.png'])
+
+    plot_regression_logs_vs_bpmn(
+        df=combined_df,
+        chart_title="Regression Curve: Logs vs BPMN (All Architectures)",
+        group_seed=True,
+        group_arhitec=True,
+        poly_level=4,
+        figsize=(20, 8),
+        ylim=(-0.05, 1.2),
+        xlim=(0, 3000),
+        file_path=graf_regression_file
     )
 
     final_acc_df = aggregate_metric_over_epochs(LEARN_PR_DIAGRAMS_PATH, 'val_accuracy')
@@ -90,7 +143,7 @@ def run_analitics_mode(args):
         file_path = graf_radar_file
     )
 
-    avg_epoch_time_bar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_avg_epoch_time.png'])
+    avg_epoch_time_bar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_avg_epoch_time_bpmn.png'])
     plot_avg_epoch_time_bar(
         df=final_df,
         chart_title="Середній Час Навчання На Епоху (BPMN)",
@@ -99,8 +152,17 @@ def run_analitics_mode(args):
         figsize=(18, 10),
         file_path=avg_epoch_time_bar_file
     )
+    avg_epoch_time_bar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_avg_epoch_time_log.png'])
+    plot_avg_epoch_time_bar(
+        df=final_df,
+        chart_title="Середній Час Навчання На Епоху (Logs)",
+        data_type_filter="logs",
+        seed_filter=None,
+        figsize=(18, 10),
+        file_path=avg_epoch_time_bar_file
+    )
 
-    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_class.png'])
+    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_class_bpmn.png'])
     class_dict_dynamics  = {
         "Hybrid": ["GGNN", "MuseGNN", "TransformerMLP","GraphMixer", "Graphormer"],
         "Static": ["MLP", "GCN", "GraphSAGE", "APPNP", "GPRGNN","MixHop", "DeepGCN", "GATConv", "GATv2" ],
@@ -115,11 +177,12 @@ def run_analitics_mode(args):
         metric_list=metric_list,
         metric_labels=metric_labels,
         chart_title="Architectures Grouped by Dynamics Type",
+        data_type_filter='bpmn',
         figsize=(16, 10),
         file_path=bar_radar_file
     )
 
-    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_atten.png'])
+    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_atten_bpmn.png'])
     class_dict_attention  = {
         "Uses Attention": [
             "TGAT", "TemporalGAT", "DFAGNN", "GRUGAT", "MuseGNN", "TransformerMLP", "GraphMixer",
@@ -138,11 +201,12 @@ def run_analitics_mode(args):
         metric_list=metric_list,
         metric_labels=metric_labels,
         chart_title="Effect of Attention Mechanism",
-        figsize=(10, 5),
+        data_type_filter='bpmn',
+        figsize=(16, 10),
         file_path=bar_radar_file
     )
 
-    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_aggreg.png'])
+    bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_aggreg_bpmn.png'])
     class_dict_aggregation  = {
         "Mean/Max/Sum Aggr": ["GCN", "GraphSAGE", "GIN", "GPRGNN", "APPNP"],
         "RNN-based (GRU/LSTM)": ["GGNN", "GRUGAT", "TGCN"],
@@ -156,12 +220,13 @@ def run_analitics_mode(args):
         class_dict=class_dict_aggregation ,
         metric_list=metric_list,
         metric_labels=metric_labels,
+        data_type_filter='bpmn',
         chart_title="Aggregation type",
-        figsize=(10, 5),
+        figsize=(16, 10),
         file_path=bar_radar_file
     )
     
-    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_scope.png'])
+    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_scope_bpmn.png'])
     class_dict_scope = {
         "Local Propagation": [
             "GCN", "GATConv", "GATv2", "GraphSAGE", "GIN", "TGAT", "TemporalGAT", "GRUGAT",
@@ -177,11 +242,12 @@ def run_analitics_mode(args):
         class_dict=class_dict_scope,
         metric_list=metric_list,
         metric_labels=metric_labels,
+        data_type_filter='bpmn',
         chart_title="Propagation Scope of GNN Architectures",
-        figsize=(10, 5),
+        figsize=(16, 10),
         file_path=bar_scope_file
     )
-    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_input.png'])
+    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_input_bpmn.png'])
     class_dict_input = {
         "Positional Encoding": ["Graphormer", "GPS", "SAN"],
         "Structural Input": ["GCN", "GIN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "DeepGCN", "MixHop", "GPRGNN",
@@ -195,11 +261,12 @@ def run_analitics_mode(args):
         class_dict=class_dict_input,
         metric_list=metric_list,
         metric_labels=metric_labels,
+        data_type_filter='bpmn',
         chart_title="Input Representation Strategy",
-        figsize=(10, 5),
+        figsize=(16, 10),
         file_path=bar_scope_file
     )
-    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_model_type.png'])
+    bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_model_type_bpmn.png'])
     class_dict_model_type = {
         "Standard GNN": ["GCN", "GIN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "GPRGNN"],
         "GNN + RNN": ["GGNN", "GRUGAT", "TGCN"],
@@ -213,9 +280,10 @@ def run_analitics_mode(args):
         df=final_df,
         class_dict=class_dict_model_type,
         metric_list=metric_list,
+        data_type_filter='bpmn',
         metric_labels=metric_labels,
         chart_title="Architectures Grouped by Model Type",
-        figsize=(10, 5),
+        figsize=(16, 10),
         file_path=bar_scope_file
     )
 
@@ -232,7 +300,7 @@ def run_analitics_mode(args):
     plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (BPMN)",'bpmn',seed, ylim=(1,6), max_epoch=80,figsize=(16, 10),loc='upper right', file_path=graf_loss_file )
 
     graf_oos_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_oos_file.png'])
-    plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (BPMN)",'bpmn',seed,ylim=(0,0.25), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )
+    plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (BPMN)",'bpmn',seed,ylim=(0,0.1), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )
 
     graf_acc_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_accuracy_log_file.png'])
     plot_metric_over_epochs(final_acc_df, "Accuracy Over Epochs (Logs)",'logs',seed, max_epoch=80,figsize=(16, 10),loc='upper left',file_path=graf_acc_file )
@@ -244,5 +312,5 @@ def run_analitics_mode(args):
     plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (Logs)",'logs',seed,ylim=(1,6), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_loss_file )
 
     graf_oos_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_oos_log_file.png'])
-    plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (Logs)",'logs',seed,ylim=(0,0.25), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )
+    plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (Logs)",'logs',seed,ylim=(0,0.1), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )
 

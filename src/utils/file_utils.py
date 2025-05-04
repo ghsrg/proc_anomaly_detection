@@ -42,6 +42,7 @@ def aggregate_statistics(directory_path):
                     df = pd.read_excel(full_path)
 
                     if not df.empty:
+                        print(f' Aggregate statistics: {filename}')
                         last_row = df.iloc[-1]  # беремо останній рядок
                         result = {
                             "architecture": architecture,
@@ -87,6 +88,7 @@ def load_and_aggregate_confusion_matrices(
         if filename.endswith("CM.png_full.xlsx") and data_type_filter in filename:
             full_path = os.path.join(folder_path, filename)
             try:
+                print(f' Aggregate CMs: {filename}')
                 df = pd.read_excel(full_path, index_col=0)
                 matrices.append(df)
             except Exception as e:
@@ -112,14 +114,33 @@ def load_and_aggregate_confusion_matrices(
 
     return aggregated_df
 
-def combine_activity_stat_files(directory):
+def combine_activity_stat_files_clear(directory):
     all_dfs = []
     for filename in os.listdir(directory):
         if filename.endswith("_accuracy_stat.xlsx"):
+            print(f' Aggregate distributions: {filename}')
             df = pd.read_excel(os.path.join(directory, filename))
             all_dfs.append(df)
     combined_df = pd.concat(all_dfs, ignore_index=True)
     return combined_df
+
+
+def combine_activity_stat_files(directory):
+    all_dfs = []
+    for filename in os.listdir(directory):
+        if filename.endswith("_accuracy_stat.xlsx"):
+            print(f' Aggregate distributions: {filename}')
+            df = pd.read_excel(os.path.join(directory, filename))
+            all_dfs.append(df)
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    # 🔧 Множимо train_count на 2 тільки для logs
+    if "mode" in combined_df.columns and "train_count" in combined_df.columns:
+        combined_df.loc[combined_df["mode"] == "logs", "train_count"] *= 2
+
+    return combined_df
+
 
 def save_activity_stats_to_excel(activity_stats, architecture, mode, seed, file_path):
     """

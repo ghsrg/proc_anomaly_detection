@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from sklearn.metrics import confusion_matrix
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, TwoSlopeNorm
 
 logger = get_logger(__name__)
 
@@ -454,6 +454,7 @@ def plot_regression_by_architecture(
     figsize=(10, 10),
     poly_level=2,
     ylim=(0, 1),
+    xlim=None,
     file_path=None
 ):
     """
@@ -518,6 +519,7 @@ def plot_regression_by_architecture(
     plt.title(chart_title, fontsize=24)
     plt.tick_params(axis='both', labelsize=18)
     plt.ylim(ylim)
+    plt.xlim(xlim)
     plt.grid(True)
     plt.legend(bbox_to_anchor=(1.0, 1), loc='upper left', fontsize=16)
     plt.tight_layout()
@@ -528,6 +530,174 @@ def plot_regression_by_architecture(
     else:
         plt.show()
 
+
+def visualize_diff_conf_matrix(
+    cm_bpmn,
+    cm_logs,
+    file_path=None,
+    top_k=30,
+    top_k_mode="diag",  # "diag" або "diff"
+    use_log_scale=False,
+    title="Δ Confusion Matrix (BPMN - Logs)",
+    min_value=0.1,
+    cmap="RdBu",
+    normalize=False
+):
+    """
+    Візуалізація порівняльної теплокарти (Logs vs BPMN).
+    """
+    # Узгодження міток
+    all_labels = sorted(set(cm_bpmn.index) | set(cm_logs.index))
+    cm_bpmn = cm_bpmn.reindex(index=all_labels, columns=all_labels, fill_value=0)
+    cm_logs = cm_logs.reindex(index=all_labels, columns=all_labels, fill_value=0)
+
+    # Віднімання ДО або ПІСЛЯ нормалізації
+    if normalize:
+        cm_bpmn = cm_bpmn.div(cm_bpmn.sum(axis=1), axis=0).fillna(0)
+        cm_logs = cm_logs.div(cm_logs.sum(axis=1), axis=0).fillna(0)
+
+    diff_matrix = cm_bpmn - cm_logs
+
+    # Top-K вибір
+    if top_k is not None:
+        if top_k_mode == "diff":
+            diff_score = np.abs(np.diag(diff_matrix))
+        else:  # "diag"
+            diff_score = np.diag(cm_bpmn)
+
+        top_k_indices = np.argsort(diff_score)[::-1][:top_k]
+        diff_matrix = diff_matrix.iloc[top_k_indices, top_k_indices]
+        labels = diff_matrix.index.tolist()
+    else:
+        labels = diff_matrix.index.tolist()
+
+    # Фільтрація шуму
+    filtered_diff = diff_matrix.copy()
+    filtered_diff[np.abs(filtered_diff) < min_value] = 0
+    mask = filtered_diff == 0
+
+    def format_cell(x):
+        if abs(x) < min_value:
+            return ""
+        elif abs(x) >= 100:
+            return f"{x:.0f}"
+        elif abs(x) >= 10:
+            return f"{x:.1f}".rstrip("0").rstrip(".")
+        elif abs(x) >= 1:
+            return f"{x:.2f}".rstrip("0").rstrip(".")
+        else:
+            return f"{x:.2f}".rstrip("0").rstrip(".")
+
+    annotations = np.vectorize(format_cell)(filtered_diff)
+
+    plt.figure(figsize=(min(1 + 0.5 * len(labels), 20), min(1 + 0.5 * len(labels), 18)))
+
+    if use_log_scale:
+        norm = LogNorm(vmin=np.abs(filtered_diff[filtered_diff != 0]).min(), vmax=np.abs(filtered_diff).max())
+    else:
+        max_abs = np.max(np.abs(filtered_diff.values))
+        norm = TwoSlopeNorm(vcenter=0.0, vmin=-max_abs, vmax=max_abs)
+
+    sns.heatmap(
+        filtered_diff,
+        annot=annotations,
+        fmt="",
+        cmap=cmap,
+        mask=mask,
+        norm=norm,
+        xticklabels=labels,
+        yticklabels=labels,
+        linewidths=0.5,
+        linecolor="gray",
+        cbar_kws={"label": "Δ BPMN - Logs"}
+    )
+
+    plt.title(title)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=120)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
+
+
+def plot_regression_logs_vs_bpmn(
+    df,
+    chart_title="Regression: Logs vs BPMN",
+    arhitec_filter=None,
+    seed_filter=None,
+    group_seed=False,
+    group_arhitec=False,
+    figsize=(14, 8),
+    poly_level=2,
+    ylim=(0, 1),
+    xlim=None,
+    file_path=None
+):
+    plt.figure(figsize=figsize)
+
+    for mode in ["logs", "bpmn"]:
+        filtered_df = df[df["mode"] == mode]
+
+        if seed_filter is not None:
+            filtered_df = filtered_df[filtered_df["seed"] == seed_filter]
+        if arhitec_filter:
+            filtered_df = filtered_df[filtered_df["architecture"].isin(arhitec_filter)]
+
+        if group_seed:
+            filtered_df = (
+                filtered_df.groupby(["architecture", "train_count"])
+                .agg({"val_accuracy": "mean"})
+                .reset_index()
+            )
+            filtered_df["seed"] = "avg"
+
+        if group_arhitec:
+            filtered_df = (
+                filtered_df.groupby(["train_count"])
+                .agg({"val_accuracy": "mean"})
+                .reset_index()
+            )
+            filtered_df["architecture"] = f"Average ({mode})"
+            architectures = [f"Average ({mode})"]
+        else:
+            architectures = filtered_df["architecture"].unique()
+
+        for arch in architectures:
+            sub_df = filtered_df[filtered_df["architecture"] == arch]
+            sub_df = sub_df.dropna(subset=["val_accuracy"])
+            x = sub_df["train_count"].values
+            y = sub_df["val_accuracy"].values
+            if len(x) > poly_level:
+                coeffs = np.polyfit(x, y, deg=poly_level)
+                poly = np.poly1d(coeffs)
+                x_vals = np.linspace(min(x), max(x), 200)
+                y_vals = poly(x_vals)
+                r2 = r2_score(y, poly(x))
+                label = f"{arch} (R²={r2:.2f})"
+                plt.plot(x_vals, y_vals, linestyle="--", label=label)
+                plt.scatter(x, y, alpha=0.4)
+
+    plt.xlabel("Train Appearance Count", fontsize=20)
+    plt.ylabel("Validation Accuracy", fontsize=20)
+    plt.title(chart_title, fontsize=24)
+    plt.tick_params(axis='both', labelsize=18)
+    plt.ylim(ylim)
+    plt.xlim(xlim)
+    plt.grid(True)
+    plt.legend(bbox_to_anchor=(1.0, 1), loc='upper left', fontsize=14)
+    plt.tight_layout()
+
+    if file_path:
+        plt.savefig(file_path, dpi=100)
+        plt.close()
+        print(f"Графік збережено у {file_path}")
+    else:
+        plt.show()
 def plot_architecture_radar_by_metric(
     df,
     chart_title="Radar Chart by Architecture",
@@ -608,6 +778,7 @@ def plot_class_bar_chart(
     metric_list,
     metric_labels=None,
     class_labels=None,
+    data_type_filter=None,
     chart_title="Порівняння класів архітектур",
     figsize=(8, 6),
     file_path=None
@@ -626,6 +797,9 @@ def plot_class_bar_chart(
     - file_path: шлях до збереження (PNG)
     """
     plot_data = []
+
+    if data_type_filter:
+        df = df[df["data_type"] == data_type_filter]
 
     for cls_name, arch_list in class_dict.items():
         class_subset = df[df["architecture"].isin(arch_list)]
