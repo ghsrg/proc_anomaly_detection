@@ -14,10 +14,10 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class DFAGNN_pr(nn.Module):
+class MPGCN_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None, num_subspaces=3):
         super().__init__()
-        print(f"📦 Init DFAGNN_pr with input_dim={input_dim}, output_dim={output_dim}, subspaces={num_subspaces}")
+        print(f"📦 Init MPGCN_pr with input_dim={input_dim}, output_dim={output_dim}, subspaces={num_subspaces}")
 
         self.num_subspaces = num_subspaces
         self.sub_gnns = nn.ModuleList([

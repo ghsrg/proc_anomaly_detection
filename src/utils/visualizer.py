@@ -612,9 +612,10 @@ def visualize_diff_conf_matrix(
         cbar_kws={"label": "Δ BPMN - Logs"}
     )
 
-    plt.title(title)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
+    plt.title(title, fontsize=24)
+    plt.xlabel("Predicted",fontsize=20)
+    plt.ylabel("True",fontsize=20)
+    plt.tick_params(axis='both', labelsize=12)
     plt.tight_layout()
 
     if file_path:
@@ -707,7 +708,8 @@ def plot_architecture_radar_by_metric(
     metric_labels=None,
     figsize=(8, 8),
     normalize=False,
-    file_path=None
+    file_path=None,
+    ylim=(0, 1)
 ):
     """
     Побудова Radar Chart, де вершини — архітектури, а лінії — метрики.
@@ -756,13 +758,13 @@ def plot_architecture_radar_by_metric(
         ax.plot(angles, values, label=label)
         ax.fill(angles, values, alpha=0.1)
 
-    ax.set_title(chart_title, size=14, y=1.1)
+    ax.set_title(chart_title, size=24, y=1.1)
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
     ax.set_thetagrids(np.degrees(angles[:-1]), architectures)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(ylim)
     ax.grid(True)
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left' ,fontsize=12)
+    ax.legend(bbox_to_anchor=(1.0, 1), loc='upper left' ,fontsize=12)
     plt.tight_layout()
 
     if file_path:
@@ -816,10 +818,11 @@ def plot_class_bar_chart(
 
     plt.figure(figsize=figsize)
     sns.barplot(data=plot_df, x="Клас", y="Значення", hue="Метрика")
-    plt.title(chart_title)
-    plt.ylabel("Значення метрик")
-    plt.xlabel("")
-    plt.legend(title="", bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
+    plt.title(chart_title, fontsize=24)
+    plt.ylabel("Значення метрик", fontsize=20)
+    plt.xlabel("", fontsize=20)
+    plt.legend(title="", bbox_to_anchor=(1.0, 1), loc='upper left', fontsize=18)
+    plt.tick_params(axis='both', labelsize=18)
     plt.tight_layout()
     if file_path:
         plt.savefig(file_path)

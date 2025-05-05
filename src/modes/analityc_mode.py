@@ -34,9 +34,9 @@ def run_analitics_mode(args):
     save_aggregated_statistics(cm_logs, final_cm_logs_file)
 
     graf_cm_diff_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_diff.png'])
-    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=60, top_k_mode="diff",min_value=4.1, normalize=False, title="Δ Confusion Matrix (BPMN - Logs)", file_path=graf_cm_diff_file)
+    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=50, top_k_mode="diff",min_value=4.1, normalize=False, title="Δ Confusion Matrix (BPMN - Logs)", file_path=graf_cm_diff_file)
     graf_cm_norm_diff_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_norm_diff.png'])
-    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=60, top_k_mode="diff", min_value=0.01, normalize=True, title="Δ Confusion Matrix Normilized (BPMN - Logs)", file_path=graf_cm_norm_diff_file)
+    visualize_diff_conf_matrix(cm_bpmn,cm_logs,top_k=50, top_k_mode="diff", min_value=0.01, normalize=True, title="Δ Confusion Matrix Normilized (BPMN - Logs)", file_path=graf_cm_norm_diff_file)
 
     graf_cm_bpmn_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_cm_bpmn.png'])
     visualize_aggregated_conf_matrix(
@@ -130,6 +130,7 @@ def run_analitics_mode(args):
         seed_filter=None,
         normalize=True,
         figsize=(10, 10),
+        ylim=(0.6, 1),
         file_path = graf_radar_file
     )
     graf_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_radar_log.png'])
@@ -139,6 +140,7 @@ def run_analitics_mode(args):
         data_type_filter="logs",
         seed_filter=seed,
         normalize=True,
+        ylim=(0, 1),
         figsize=(10, 10),
         file_path = graf_radar_file
     )
@@ -163,11 +165,11 @@ def run_analitics_mode(args):
     )
 
     bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_class_bpmn.png'])
-    class_dict_dynamics  = {
-        "Hybrid": ["GGNN", "MuseGNN", "TransformerMLP","GraphMixer", "Graphormer"],
-        "Static": ["MLP", "GCN", "GraphSAGE", "APPNP", "GPRGNN","MixHop", "DeepGCN", "GATConv", "GATv2" ],
+    class_dict_dynamics = {
+        "Static": ["MLP", "GCN", "GraphSAGE", "APPNP", "GPRGNN", "MixHop", "DeepGCN", "GATConv", "GATv2"],
         "Discrete-dynamic": ["TGCN", "GRUGAT"],
-        "Continuously-dynamic": ["TGAT", "MuseGNN", "TemporalGAT"]
+        "Continuously-dynamic": ["TGAT", "TemporalGAT"],
+        "Hybrid": ["MuseGNN", "TransformerMLP", "GraphMixer"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -183,15 +185,10 @@ def run_analitics_mode(args):
     )
 
     bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_atten_bpmn.png'])
-    class_dict_attention  = {
-        "Uses Attention": [
-            "TGAT", "TemporalGAT", "DFAGNN", "GRUGAT", "MuseGNN", "TransformerMLP", "GraphMixer",
-            "GATConv", "GATv2", "Graphormer", "SAN", "GPS", "Performer-GNN"
-        ],
-        "No Attention": [
-            "MLP", "GCN", "GraphSAGE", "APPNP", "GPRGNN", "MixHop", "DeepGCN", "TGCN",
-            "GGNN", "GIN", "MEIG", "MiTFM", "H2GCN"
-        ]
+    class_dict_attention = {
+        "Uses Attention": ["TGAT", "TemporalGAT", "MPGCN", "GRUGAT", "MuseGNN", "TransformerMLP", "GraphMixer",
+                           "GATConv", "GATv2"],
+        "No Attention": ["MLP", "GCN", "GraphSAGE", "APPNP", "GPRGNN", "MixHop", "DeepGCN", "TGCN", "GGNN"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -207,11 +204,11 @@ def run_analitics_mode(args):
     )
 
     bar_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_aggreg_bpmn.png'])
-    class_dict_aggregation  = {
-        "Mean/Max/Sum Aggr": ["GCN", "GraphSAGE", "GIN", "GPRGNN", "APPNP"],
-        "RNN-based (GRU/LSTM)": ["GGNN", "GRUGAT", "TGCN"],
-        "Attention-based": ["GATConv", "GATv2", "TGAT", "TemporalGAT", "Graphormer", "SAN", "GPS", "Performer-GNN"],
-        "MLP-based Mixing": ["MixHop", "TransformerMLP", "GraphMixer", "MEIG", "MiTFM"]
+    class_dict_aggregation = {
+        "Mean/Max/Sum": ["GCN", "GraphSAGE", "GPRGNN", "APPNP"],
+        "RNN-based": ["GGNN", "GRUGAT", "TGCN"],
+        "Attention-based": ["GATConv", "GATv2", "TGAT", "TemporalGAT"],
+        "MLP-based Mixing": ["MixHop", "TransformerMLP", "GraphMixer", "MuseGNN", "MPGCN"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -228,12 +225,9 @@ def run_analitics_mode(args):
     
     bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_scope_bpmn.png'])
     class_dict_scope = {
-        "Local Propagation": [
-            "GCN", "GATConv", "GATv2", "GraphSAGE", "GIN", "TGAT", "TemporalGAT", "GRUGAT",
-            "GGNN", "TGCN", "APPNP", "GPRGNN", "MixHop", "DeepGCN"
-        ],
-        "Global Attention": ["Graphormer", "SAN", "GPS", "Performer-GNN"],
-        "Globalized MLP-based": ["GraphMixer", "TransformerMLP", "MuseGNN", "DFAGNN", "MEIG", "MiTFM"]
+        "Local Propagation": ["GCN", "GATConv", "GATv2", "GraphSAGE", "TGAT", "TemporalGAT", "GRUGAT", "GGNN", "TGCN",
+                              "APPNP", "GPRGNN", "MixHop", "DeepGCN"],
+        "Globalized MLP-based": ["GraphMixer", "TransformerMLP", "MuseGNN", "MPGCN"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -243,16 +237,14 @@ def run_analitics_mode(args):
         metric_list=metric_list,
         metric_labels=metric_labels,
         data_type_filter='bpmn',
-        chart_title="Propagation Scope of GNN Architectures",
+        chart_title="Propagation Scope",
         figsize=(16, 10),
         file_path=bar_scope_file
     )
     bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_input_bpmn.png'])
     class_dict_input = {
-        "Positional Encoding": ["Graphormer", "GPS", "SAN"],
-        "Structural Input": ["GCN", "GIN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "DeepGCN", "MixHop", "GPRGNN",
-                             "H2GCN"],
-        "Structural + Semantic": ["MuseGNN", "TransformerMLP", "GraphMixer", "MEIG", "DFAGNN", "MiTFM"]
+        "Structural Input": ["GCN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "DeepGCN", "MixHop", "GPRGNN"],
+        "Structural + Semantic": ["MuseGNN", "TransformerMLP", "GraphMixer", "MPGCN"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -268,11 +260,10 @@ def run_analitics_mode(args):
     )
     bar_scope_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_bar_model_type_bpmn.png'])
     class_dict_model_type = {
-        "Standard GNN": ["GCN", "GIN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "GPRGNN"],
+        "Standard GNN": ["GCN", "GraphSAGE", "GATConv", "GATv2", "APPNP", "GPRGNN"],
         "GNN + RNN": ["GGNN", "GRUGAT", "TGCN"],
-        "GNN + Transformer": ["TGAT", "TemporalGAT", "Graphormer", "GPS", "SAN", "Performer-GNN"],
-        "GNN + MLP/Neural Mixer": ["MixHop", "DeepGCN", "TransformerMLP", "GraphMixer", "MuseGNN", "DFAGNN", "MEIG",
-                                   "MiTFM"]
+        "GNN + Temporal": ["TGAT", "TemporalGAT"],
+        "GNN + MLP/Neural Mixer": ["MixHop", "DeepGCN", "TransformerMLP", "GraphMixer", "MuseGNN", "MPGCN"]
     }
     metric_list = ["val_accuracy", "val_top_k_accuracy", "val_out_of_scope_rate"]
     metric_labels = ["Accuracy", "Top-3 Accuracy", "Out-of-Scope Rate"]
@@ -297,7 +288,7 @@ def run_analitics_mode(args):
     plot_metric_over_epochs(final_acct3_df, "TOP 3 Accuracy Over Epochs (BPMN)",'bpmn',seed, max_epoch=80,figsize=(16, 10),loc='lower right',file_path=graf_acct3_file )
 
     graf_loss_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_loss_file.png'])
-    plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (BPMN)",'bpmn',seed, ylim=(1,6), max_epoch=80,figsize=(16, 10),loc='upper right', file_path=graf_loss_file )
+    plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (BPMN)",'bpmn',seed, ylim=(0.5,5), max_epoch=80,figsize=(16, 10),loc='upper right', file_path=graf_loss_file )
 
     graf_oos_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_oos_file.png'])
     plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (BPMN)",'bpmn',seed,ylim=(0,0.1), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )
@@ -309,7 +300,7 @@ def run_analitics_mode(args):
     plot_metric_over_epochs(final_acct3_df, "TOP 3 Accuracy Over Epochs (Logs)",'logs',seed, max_epoch=80,figsize=(16, 10),loc='upper left',file_path=graf_acct3_file )
 
     graf_loss_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_loss_log_file.png'])
-    plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (Logs)",'logs',seed,ylim=(1,6), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_loss_file )
+    plot_metric_over_epochs(final_train_loss_df, "Loss Over Epochs (Logs)",'logs',seed,ylim=(0.5,5), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_loss_file )
 
     graf_oos_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_oos_log_file.png'])
     plot_metric_over_epochs(final_oos_df, " Out of Scope Epochs (Logs)",'logs',seed,ylim=(0,0.1), max_epoch=80,figsize=(16, 10),loc='upper right',file_path=graf_oos_file )

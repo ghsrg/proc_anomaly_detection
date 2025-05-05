@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 logger = get_logger(__name__)
 
-class GCN_pr(nn.Module):
+class GCN2_pr(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
         """
         :param input_dim: розмірність node features
@@ -71,6 +71,59 @@ class GCN_pr(nn.Module):
         x = self.dropout(x)
 
         return self.task_head(x), self.time_head(x)
+class GCN_pr(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, doc_dim, edge_dim=None, num_nodes=None):
+        super().__init__()
+        print(f"📦 Init GCN_pr (deep) with input_dim={input_dim}, output_dim={output_dim}")
+
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        self.conv3 = GCNConv(hidden_dim, hidden_dim)
+
+        self.input_proj = nn.Linear(input_dim, hidden_dim)  # для резідуального зв'язку
+
+        self.activation = nn.ReLU()
+        self.dropout = nn.Dropout(0.3)
+        self.global_pool = global_mean_pool
+
+        self.doc_fc = nn.Linear(doc_dim, hidden_dim)
+
+        self.bnf = nn.LayerNorm(hidden_dim * 2)
+        self.fusion_head = nn.Linear(hidden_dim * 2, hidden_dim)
+
+        self.task_head = nn.Linear(hidden_dim, output_dim)
+        self.time_head = nn.Linear(hidden_dim, 1)
+
+    def forward(self, data_batch, doc_features=None):
+        x, edge_index, batch = data_batch.x, data_batch.edge_index, data_batch.batch
+        device = self.task_head.weight.device
+        x, edge_index, batch = x.to(device), edge_index.to(device), batch.to(device)
+
+        # Збереження початкового x для резідуального зв'язку
+        residual = x
+        x = self.activation(self.conv1(x, edge_index))
+        x = x + self.input_proj(residual)  # перший скіп
+
+        x = self.activation(self.conv2(x, edge_index))
+        x = x + x  # простий self-loop
+
+        x = self.activation(self.conv3(x, edge_index))
+        x = x + x  # ще один self-loop
+
+        x_pooled = self.global_pool(x, batch)
+
+        if doc_features is not None:
+            doc_emb = self.activation(self.doc_fc(doc_features.to(device)))
+        else:
+            doc_emb = torch.zeros((x_pooled.size(0), self.doc_fc.out_features), device=device)
+
+        x = torch.cat([x_pooled, doc_emb], dim=1)
+        x = self.bnf(x)
+        x = self.activation(self.fusion_head(x))
+        x = self.dropout(x)
+
+        return self.task_head(x), self.time_head(x)
+
 class TemporalEncoding(nn.Module):
     def __init__(self, dim):
         super().__init__()

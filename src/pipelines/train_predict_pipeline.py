@@ -20,7 +20,7 @@ import src.core.core_GCN_pr as GCN_pr_core
 import src.core.core_GraphSAGE_pr as GraphSAGE_pr_core
 import src.core.core_MuseGNN_pr as MuseGNN_pr_core
 import src.core.core_APPNP_pr as APPNP_pr_core
-import src.core.core_DFAGNN_pr as DFAGNN_pr_core
+import src.core.core_MPGCN_pr as MPGCN_pr_core
 import src.core.core_DeepGCN_pr as DeepGCN_pr_core
 import src.core.core_TemporalGAT_pr as TemporalGAT_pr_core
 import src.core.core_TGCN_pr as TGCN_pr_core
@@ -53,7 +53,7 @@ logger.info(f"Використовується пристрій: {device}")
 MODEL_MAP = {
     "APPNP_pr": (APPNP_pr_core),
     "DeepGCN_pr": (DeepGCN_pr_core),
-    "DFAGNN_pr": (DFAGNN_pr_core),
+    "MPGCN_pr": (MPGCN_pr_core),
     "GATConv_pr": (GATConv_pr_core),
     "GATv2_pr": (GATv2_pr_core),
     "GCN_pr": (GCN_pr_core),
@@ -93,9 +93,9 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=0.9, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    fraction=0.5, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
     seed = 9467,
-    sleep = 0#9000 #3600година
+    sleep = 3000#9000 #3600година
 ):
     """
     Запускає процес навчання для вказаної моделі.
