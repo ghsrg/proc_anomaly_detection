@@ -93,9 +93,9 @@ def train_model_pr(
     delta=1e-4,  # Мінімальне покращення, яке вважається значущим
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
-    fraction=0.5, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
-    seed = 9467,
-    sleep = 3000#9000 #3600година
+    fraction=1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
+    seed = 9467, #2792,#
+    sleep = 0#9000 #3600година
 ):
     """
     Запускає процес навчання для вказаної моделі.
@@ -295,6 +295,7 @@ def train_model_pr(
                 global_node_dict=global_node_dict
                 #true_node_ids=val_stats.get("true_node_ids")
             )
+
             confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_seed{seed}_CM_worst.png"
 
             visualize_confusion_matrix(

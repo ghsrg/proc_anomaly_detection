@@ -97,20 +97,20 @@ def run_analitics_mode(args):
         seed_filter=None,
         group_arhitec=False,
         group_seed=True,
-        poly_level=4,
+        poly_level=3,
         figsize=(18, 10),
         ylim=(-0.05, 1.2),
         xlim=(0, 3000),
         file_path = graf_regression_file
     )
-    graf_regression_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_regression_grouped.png'])
 
+    graf_regression_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_regression_grouped.png'])
     plot_regression_logs_vs_bpmn(
         df=combined_df,
         chart_title="Regression Curve: Logs vs BPMN (All Architectures)",
         group_seed=True,
         group_arhitec=True,
-        poly_level=4,
+        poly_level=3,
         figsize=(20, 8),
         ylim=(-0.05, 1.2),
         xlim=(0, 3000),
@@ -128,9 +128,9 @@ def run_analitics_mode(args):
         chart_title="Метрики по архітектурах (BPMN)",
         data_type_filter="bpmn",
         seed_filter=None,
-        normalize=True,
+        normalize=False,
         figsize=(10, 10),
-        ylim=(0.6, 1),
+        ylim=(0.6, 1.0),
         file_path = graf_radar_file
     )
     graf_radar_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'graf_radar_log.png'])
@@ -139,8 +139,8 @@ def run_analitics_mode(args):
         chart_title="Метрики по архітектурах (Logs)",
         data_type_filter="logs",
         seed_filter=seed,
-        normalize=True,
-        ylim=(0, 1),
+        normalize=False,
+        ylim=(0, 1.0),
         figsize=(10, 10),
         file_path = graf_radar_file
     )
