@@ -4,10 +4,11 @@ import time
 from src.utils.logger import get_logger
 from src.utils.file_utils import save_checkpoint, load_checkpoint, load_register, save_prepared_data,  load_prepared_data, load_global_statistics_from_json, save2csv, save_activity_stats_to_excel
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import save_training_diagram, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix, visualize_train_vs_val_accuracy, visualize_activity_train_vs_val_accuracy_with_regression
-from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
+from src.utils.visualizer import save_training_diagram,plot_prefix_metric, visualize_distribution, plot_confusion_matrix, visualize_confusion_matrix, visualize_train_vs_val_accuracy, visualize_activity_train_vs_val_accuracy_with_regression
+from src.config.config import LEARN_PR_DIAGRAMS_PATH,TEST_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
 from src.core.split_data import split_data, create_kfold_splits
 from datetime import datetime
+import pandas as pd
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
@@ -53,27 +54,25 @@ logger.info(f"Використовується пристрій: {device}")
 MODEL_MAP = {
     "APPNP_pr": (APPNP_pr_core),
     "DeepGCN_pr": (DeepGCN_pr_core),
-    "MPGCN_pr": (MPGCN_pr_core),
     "GATConv_pr": (GATConv_pr_core),
     "GATv2_pr": (GATv2_pr_core),
     "GCN_pr": (GCN_pr_core),
     "GGNN_pr": (GGNN_pr_core),
     "GPRGNN_pr": (GPRGNN_pr_core),
-    "GraphMixer_pr": (GraphMixer_pr_core), #*довго
-    "Graphormer_pr": (Graphormer_pr_core),#*довго
     "GraphSAGE_pr": (GraphSAGE_pr_core),
-
+    "GRUGAT_pr": (GRUGAT_pr_core),
     "MixHop_pr": (MixHop_pr_core),
     "MLP_pr": (MLP_pr_core),
+    "MPGCN_pr": (MPGCN_pr_core),
     "MuseGNN_pr": (MuseGNN_pr_core),
     "TemporalGAT_pr": (TemporalGAT_pr_core),
     "TGAT_pr": (TGAT_pr_core),
-
+    # ------
     "TransformerMLP_pr": (TransformerMLP_pr_core), #*довго
-
-    "GRUGAT_pr": (GRUGAT_pr_core), # !не працює треба доробляти prepeare_date
     "EGCN_H_pr": (EGCN_H_pr_core),# !не працює треба доробляти prepeare_date
-    "TGCN_pr": (TGCN_pr_core) #!не працює треба доробляти prepeare_date
+    "GraphMixer_pr": (GraphMixer_pr_core),  # *довго
+    "Graphormer_pr": (Graphormer_pr_core),  # *довго
+    "TGCN_pr": (TGCN_pr_core)
 
 
 
@@ -94,7 +93,7 @@ def train_model_pr(
     args=None,  # Аргументи командного рядка
     output_dim=470, # Розмір виходу моделі (максимальна кількість вузлів в графі)
     fraction=1, # Частка даних для навчання (1 - всі дані, 0.5 - половина даних)
-    seed = 9467, #2792,#
+    seed = 2792,#9467, #2792,#
     sleep = 0#9000 #3600година
 ):
     """
@@ -123,6 +122,7 @@ def train_model_pr(
         core_module = MODEL_MAP[model_type]
 
         pr_mode = args.pr_mode
+        eval_only = args.eval_only
         data = None
         input_dim = None
         train_activity_counter = Counter()
@@ -200,12 +200,14 @@ def train_model_pr(
 
         # Завантаження контрольної точки
         start_epoch = 0
-        if resume and checkpoint:
+        if resume or checkpoint:
             checkpoint_path = join_path([NN_PR_MODELS_CHECKPOINTS_PATH, f"{checkpoint}.pt"])
             if not is_file_exist(checkpoint_path):
                 raise FileNotFoundError(f"Файл контрольної точки не знайдено: {checkpoint_path}")
             start_epoch, _, stats = load_checkpoint(checkpoint_path, model, optimizer, stats)
             start_epoch = start_epoch + 1
+            print(f"Відновлено з контрольної точки {checkpoint_path} (епоха {start_epoch})")
+
 
         # Розділення даних
         if seed is None:
@@ -213,132 +215,154 @@ def train_model_pr(
             print(f"Generated seed: {seed}")
         train_data, val_data, test_data = split_data(data, split_ratio, fraction=fraction,  shuffle=True, seed=seed)
 
+        if not eval_only:
+            # Фіксація часу початку навчання
+            start_time = datetime.now()
+            print(f"Час початку навчання: {start_time}")
+            logger.info(f"Час початку навчання: {start_time}")
 
-        # Фіксація часу початку навчання
-        start_time = datetime.now()
-        print(f"Час початку навчання: {start_time}")
-        logger.info(f"Час початку навчання: {start_time}")
+            # Ініціалізація Early Stopping
+            best_val_loss = float('inf')  # Найкраща валідаційна втрата
+            epochs_no_improve = 0  # Лічильник епох без покращення
 
-        # Ініціалізація Early Stopping
-        best_val_loss = float('inf')  # Найкраща валідаційна втрата
-        epochs_no_improve = 0  # Лічильник епох без покращення
+            #for epoch in range(start_epoch, num_epochs):
+            for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох",position=0, dynamic_ncols=False, leave=False ):
+                #logger.info(f"Епоха {epoch + 1}/{num_epochs}")
+                #print(f"Епоха {epoch + 1}/{num_epochs}")
+                stats["epochs"].append(epoch + 1)
 
-        #for epoch in range(start_epoch, num_epochs):
-        for epoch in tqdm(range(start_epoch, num_epochs), desc="Навчання", unit="епох",position=0, dynamic_ncols=False, leave=False ):
-            #logger.info(f"Епоха {epoch + 1}/{num_epochs}")
-            #print(f"Епоха {epoch + 1}/{num_epochs}")
-            stats["epochs"].append(epoch + 1)
+                train_activity_counter.clear()
 
-            train_activity_counter.clear()
+                # Навчання за епоху
+                train_loss = core_module.train_epoch(model, train_data, optimizer, batch_size, global_node_dict=global_node_dict, train_activity_counter=train_activity_counter)
+                stats["train_loss"].append(train_loss)
+                #print(train_activity_counter)
+                #logger.info(f"Втрати на навчанні: {train_loss}")
 
-            # Навчання за епоху
-            train_loss = core_module.train_epoch(model, train_data, optimizer, batch_size, global_node_dict=global_node_dict, train_activity_counter=train_activity_counter)
-            stats["train_loss"].append(train_loss)
-            #print(train_activity_counter)
-            #logger.info(f"Втрати на навчанні: {train_loss}")
+                # Валідація
+                val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size, train_activity_counter = train_activity_counter)
+                #print(val_stats["activity_train_vs_val_accuracy"])
+                #print(val_stats)
+                if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
+                if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
+                if "val_precision" in stats: stats["val_precision"].append(val_stats.get("precision", 0))
+                if "val_recall" in stats: stats["val_recall"].append(val_stats.get("recall", 0))
+                if "val_f1_score" in stats: stats["val_f1_score"].append(val_stats.get("f1_score", 0))
+                if "val_mae" in stats: stats["val_mae"].append(val_stats.get("mae", 0))
+                if "val_rmse" in stats: stats["val_rmse"].append(val_stats.get("rmse", 0))
+                if "val_r2" in stats: stats["val_r2"].append(val_stats.get("r2", 0))
+                if "val_out_of_scope_rate" in stats: stats["val_out_of_scope_rate"].append(val_stats.get("out_of_scope_rate", 0))
 
-            # Валідація
-            val_stats = core_module.calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size, train_activity_counter = train_activity_counter)
-            #print(val_stats["activity_train_vs_val_accuracy"])
-            #print(val_stats)
-            if "val_accuracy" in stats: stats["val_accuracy"].append(val_stats["accuracy"])
-            if "val_top_k_accuracy" in stats: stats["val_top_k_accuracy"].append(val_stats["top_k_accuracy"])
-            if "val_precision" in stats: stats["val_precision"].append(val_stats.get("precision", 0))
-            if "val_recall" in stats: stats["val_recall"].append(val_stats.get("recall", 0))
-            if "val_f1_score" in stats: stats["val_f1_score"].append(val_stats.get("f1_score", 0))
-            if "val_mae" in stats: stats["val_mae"].append(val_stats.get("mae", 0))
-            if "val_rmse" in stats: stats["val_rmse"].append(val_stats.get("rmse", 0))
-            if "val_r2" in stats: stats["val_r2"].append(val_stats.get("r2", 0))
-            if "val_out_of_scope_rate" in stats: stats["val_out_of_scope_rate"].append(val_stats.get("out_of_scope_rate", 0))
+                eph_end_time = datetime.now()
+                eph_training_duration = eph_end_time - start_time
+                stats["spend_time"].append(eph_training_duration.total_seconds())
+                #logger.info(f"Статистика валідації: {val_stats}")
 
-            eph_end_time = datetime.now()
-            eph_training_duration = eph_end_time - start_time
-            stats["spend_time"].append(eph_training_duration.total_seconds())
-            #logger.info(f"Статистика валідації: {val_stats}")
+                if "accuracy" in val_stats:
+                    #print(val_stats["accuracy"])
+                    scheduler.step(val_stats["accuracy"])
+                #for param_group in optimizer.param_groups:
+                    #print("Current learning rate:", param_group['lr'])
 
-            if "accuracy" in val_stats:
-                #print(val_stats["accuracy"])
-                scheduler.step(val_stats["accuracy"])
-            #for param_group in optimizer.param_groups:
-                #print("Current learning rate:", param_group['lr'])
+                # Перевірка Early Stopping
+                if train_loss < best_val_loss - delta:
+                    best_val_loss = train_loss
+                    epochs_no_improve = 0
+                    # Можна зберігати найкращу модель
+                    checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_best.pt"
+                    save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
+                                    file_path=checkpoint_path, stats=stats)
+                else:
+                    epochs_no_improve += 1
+                    #logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
 
-            # Перевірка Early Stopping
-            if train_loss < best_val_loss - delta:
-                best_val_loss = train_loss
-                epochs_no_improve = 0
-                # Можна зберігати найкращу модель
-                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_best.pt"
-                save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss,
-                                file_path=checkpoint_path, stats=stats)
-            else:
-                epochs_no_improve += 1
-                #logger.info(f"Валідаційна втрата не покращилась: {epochs_no_improve}/{patience}")
+                # Збереження контрольної точки
+                checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_epoch_{epoch + 1}.pt"
+                save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
 
-            # Збереження контрольної точки
-            checkpoint_path = f"{NN_PR_MODELS_CHECKPOINTS_PATH}/{model_type}_{pr_mode}_seed{seed}_epoch_{epoch + 1}.pt"
-            save_checkpoint(model=model, optimizer=optimizer, epoch=epoch, loss=train_loss, file_path=checkpoint_path, stats=stats)
+                # Збереження статистики та візуалізація після кожної епохи
+                file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}.png"
+                save_training_diagram(stats,
+                                      file_path,
+                                      test_stats, title=f"{model_type} Training and Validation Metrics")
+                # Збереження матриці плутанини
+                confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_CM.png"
+                # Візуалізація матриці плутанини
 
-            # Збереження статистики та візуалізація після кожної епохи
-            file_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}.png"
-            save_training_diagram(stats,
-                                  file_path,
-                                  test_stats, title=f"{model_type} Training and Validation Metrics")
-            # Збереження матриці плутанини
-            confusion_matrix_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_CM.png"
-            # Візуалізація матриці плутанини
+                visualize_confusion_matrix(
+                    confusion_matrix_object=val_stats["confusion_matrix"],
+                    #class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
+                    file_path=confusion_matrix_path,
+                    top_k=('best', 30),
+                    global_node_dict=global_node_dict
+                    #true_node_ids=val_stats.get("true_node_ids")
+                )
 
-            visualize_confusion_matrix(
-                confusion_matrix_object=val_stats["confusion_matrix"],
-                #class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
-                file_path=confusion_matrix_path,
-                top_k=('best', 30),
-                global_node_dict=global_node_dict
-                #true_node_ids=val_stats.get("true_node_ids")
-            )
+                confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_seed{seed}_CM_worst.png"
 
-            confusion_matrix_path_w = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_seed{seed}_CM_worst.png"
+                visualize_confusion_matrix(
+                    confusion_matrix_object=val_stats["confusion_matrix"],
+                    # class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
+                    file_path=confusion_matrix_path_w,
+                    top_k=('worst', 30),
+                    global_node_dict=global_node_dict
+                    #true_node_ids=val_stats.get("true_node_ids")
+                )
 
-            visualize_confusion_matrix(
-                confusion_matrix_object=val_stats["confusion_matrix"],
-                # class_labels=[f"Task {i}" for i in range(val_stats["confusion_matrix"].shape[0])],
-                file_path=confusion_matrix_path_w,
-                top_k=('worst', 30),
-                global_node_dict=global_node_dict
-                #true_node_ids=val_stats.get("true_node_ids")
-            )
+                train_vs_val_accuracy_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy.png"
+                visualize_activity_train_vs_val_accuracy_with_regression(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
+                #visualize_train_vs_val_accuracy(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
 
-            train_vs_val_accuracy_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy.png"
-            visualize_activity_train_vs_val_accuracy_with_regression(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
-            #visualize_train_vs_val_accuracy(val_stats["activity_train_vs_val_accuracy"],train_vs_val_accuracy_path)
+                train_vs_val_accuracy_stat_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy_stat.xlsx"
+                save_activity_stats_to_excel(
+                    activity_stats=val_stats["activity_train_vs_val_accuracy"],
+                    architecture=model_type,
+                    mode=pr_mode,
+                    seed=seed,
+                    file_path=train_vs_val_accuracy_stat_path
+                )
 
-            train_vs_val_accuracy_stat_path = f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_train_vs_val_accuracy_stat.xlsx"
-            save_activity_stats_to_excel(
-                activity_stats=val_stats["activity_train_vs_val_accuracy"],
-                architecture=model_type,
-                mode=pr_mode,
-                seed=seed,
-                file_path=train_vs_val_accuracy_stat_path
-            )
+                stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_seed{seed}_statistics'])
+                save2csv(stats, stat_path)
 
-            stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_seed{seed}_statistics'])
-            save2csv(stats, stat_path)
+                # Зупинка навчання
+                if epochs_no_improve >= patience and epoch > 15:  # якщо оцінка не змінюється і більше Х епох тоді стоп
+                    logger.info(f"Early Stopping: зупинено на епосі {epoch + 1}")
+                    break
 
-            # Зупинка навчання
-            if epochs_no_improve >= patience and epoch > 15:  # якщо оцінка не змінюється і більше Х епох тоді стоп
-                logger.info(f"Early Stopping: зупинено на епосі {epoch + 1}")
-                break
-
-        # Обчислення та вивід часу навчання
-        end_time = datetime.now()
-        training_duration = end_time - start_time
-        print(f"Час завершення навчання: {end_time}")
-        print(f"Тривалість навчання: {training_duration}")
-        logger.info(f"Час завершення навчання: {end_time}")
-        logger.info(f"Тривалість навчання: {training_duration}")
-#        test_stats = core_module.calculate_statistics(model, val_data, global_node_dict, batch_size)
+            # Обчислення та вивід часу навчання
+            end_time = datetime.now()
+            training_duration = end_time - start_time
+            print(f"Час завершення навчання: {end_time}")
+            print(f"Тривалість навчання: {training_duration}")
+            logger.info(f"Час завершення навчання: {end_time}")
+            logger.info(f"Тривалість навчання: {training_duration}")
+            logger.info(f"Навчання завершено для моделі {model_type}")
+        #val_data
+        test_stats = core_module.calculate_statistics(model, data, global_node_dict, global_statistics, batch_size)
         # Збереження фінальної статистики з тестуванням
-        #save_training_diagram(stats,
-        #                      f"{LEARN_PR_DIAGRAMS_PATH}/{model_type}_training_epoch_{epoch + 1}_Final.png",
+        df_prefix = pd.DataFrame(test_stats["prefix_stats"])
+        prefix_distribution = dict(zip(df_prefix["prefix_len"], df_prefix["count"]))
+
+        # Візуалізація розподілу довжин префіксів
+        visualize_distribution(
+            prefix_distribution=prefix_distribution,
+            file_path=f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_prefix_distribution.png"
+        )
+        plot_prefix_metric(df_prefix, "accuracy", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_accuracy.png", kind="line")
+
+        plot_prefix_metric(df_prefix, "f1", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_f1.png", kind="line")
+        plot_prefix_metric(df_prefix, "precision", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_precision.png", kind="line")
+        plot_prefix_metric(df_prefix, "out_of_scope", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_out_of_scope.png", kind="line")
+        plot_prefix_metric(df_prefix, "conf", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_conf.png", kind="line")
+        plot_prefix_metric(df_prefix, "top1", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_top1.png", kind="line")
+        plot_prefix_metric(df_prefix, "top3", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_top3.png", kind="line")
+        plot_prefix_metric(df_prefix, "top5", model_type, pr_mode, f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_{pr_mode}_seed{seed}_pref-len_top5.png", kind="line")
+
+
+
+       # save_training_diagram(stats,
+       #                       f"{TEST_PR_DIAGRAMS_PATH}/{model_type}_training.png",
         #                      test_stats, title=f"{model_type} Training and Validation Metrics")
 
      #   stats["epochs"].append('Testing')
@@ -350,9 +374,9 @@ def train_model_pr(
      #   if "val_f1_score" in stats: stats["val_f1_score"].append(test_stats.get("f1_score", 0))
      #   stats["spend_time"].append('')
 
-        stat_path = join_path([LEARN_PR_DIAGRAMS_PATH, f'{model_type}_seed{seed}_statistics'])
-  #      save2csv(stats, stat_path)
-        logger.info(f"Навчання завершено для моделі {model_type}")
+        stat_path = join_path([TEST_PR_DIAGRAMS_PATH, f'{model_type}_{pr_mode}_seed{seed}_statistics'])
+        save2csv(df_prefix, stat_path)
+
 
         # Збереження матриці плутанини
         #class_labels = ["Normal", "Anomalous"]

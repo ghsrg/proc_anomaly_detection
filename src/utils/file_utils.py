@@ -63,6 +63,54 @@ def aggregate_statistics(directory_path):
     final_df = pd.DataFrame(all_results)
     return final_df
 
+def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
+    """
+    Агрегація статистики по всім архітектурам / data_type / seed.
+    Кожен файл statistics.xlsx містить розподіл по prefix_len.
+    Результат — один DataFrame зі спільною структурою.
+
+    :param directory_path: шлях до каталогу зі статистикою
+    :return: агрегований DataFrame
+    """
+    all_results = []
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith("statistics.xlsx"):
+            full_path = os.path.join(directory_path, filename)
+
+            match = re.match(r"(.+?)(?:_pr)?_(logs|bpmn)_seed(\d+)_statistics\.xlsx", filename)
+            if not match:
+                print(f"[WARN] Пропущено (не підпав під шаблон): {filename}")
+                continue
+
+            architecture, data_type, seed = match.groups()
+
+            try:
+                df = pd.read_excel(full_path)
+
+                if df.empty:
+                    continue
+
+                print(f"[OK] Обробка: {filename} — {len(df)} рядків")
+
+                # додамо архітектуру, тип даних і сид для кожного рядка
+                df["architecture"] = architecture
+                df["data_type"] = data_type
+                df["seed"] = int(seed)
+
+                all_results.append(df)
+
+            except Exception as e:
+                print(f"[ERROR] при читанні {filename}: {e}")
+
+    if not all_results:
+        print("[WARN] Не знайдено жодних даних")
+        return pd.DataFrame()
+
+    # Об’єднати все в один DataFrame
+    final_df = pd.concat(all_results, ignore_index=True)
+    return final_df
+
 def load_and_aggregate_confusion_matrices(
     folder_path,
     data_type_filter="bpmn",

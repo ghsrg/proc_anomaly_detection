@@ -65,7 +65,7 @@ def run_learning_mode(args):
         elif action == "start_pr":
             # Почати навчання з початку для PREDICTION
             logger.info(f"Розпочинається навчання з початку для моделі {model_type}.")
-            train_model_pr(model_type=model_type, resume=False, checkpoint='',
+            train_model_pr(model_type=model_type, resume=False, checkpoint=checkpoint_path,
                         data_file=data_file, args=args)
 
         elif action == "resume_pr":

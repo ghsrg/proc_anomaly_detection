@@ -108,6 +108,169 @@ def save_training_diagram(stats, file_path, test_stats=None, title='Training and
     plt.savefig(file_path, dpi=100)
     plt.close()
 
+
+def plot_prefix_metric_lines(
+    df: pd.DataFrame,
+    model_type: str,
+    pr_mode: str,
+    base_path: str
+):
+    """
+    Побудова графіків метрик залежно від довжини префікса:
+    - Line plot with error bands (mean ± std) з обмеженням до [0,1]
+    - Додаткові лінії min/max (пунктиром)
+    - Bar plot: розподіл кількості прикладів по prefix_len з нормальним масштабом
+    - Top-1/3/5 та confidence — аналогічно
+    """
+
+    def plot_with_std_and_minmax(metric: str, ylabel: str = None):
+        if f"{metric}_mean" not in df.columns:
+            return
+
+        plt.figure(figsize=(10, 4))
+        x = df["prefix_len"]
+        mean = df[f"{metric}_mean"]
+        std = df[f"{metric}_std"]
+        lower = np.clip(mean - std, 0, 1)
+        upper = np.clip(mean + std, 0, 1)
+        min_vals = df.get(f"{metric}_min", None)
+        max_vals = df.get(f"{metric}_max", None)
+
+        plt.plot(x, mean, label="mean")
+        plt.fill_between(x, lower, upper, alpha=0.2, label="± std")
+
+        if min_vals is not None and max_vals is not None:
+            plt.plot(x, min_vals, linestyle="dashed", linewidth=1, color="gray", label="min")
+            plt.plot(x, max_vals, linestyle="dashed", linewidth=1, color="gray", label="max")
+
+        plt.title(f"{model_type} ({pr_mode}) — {metric} mean ± std")
+        plt.xlabel("prefix length")
+        plt.ylabel(ylabel if ylabel else metric)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(f"{base_path}/{model_type}_{pr_mode}_{metric}_lineband.png")
+        plt.close()
+
+    # === 1. Line plot with ±std + min/max ===
+    for metric in ["accuracy", "f1_macro", "conf", "top1", "top3", "top5"]:
+        plot_with_std_and_minmax(metric, ylabel="score")
+
+    # === 2. Bar plot — кількість прикладів для кожного prefix_len ===
+    if "count" in df.columns:
+        plt.figure(figsize=(10, 4))
+        ax = sns.barplot(data=df, x="prefix_len", y="count", color="skyblue")
+        plt.title(f"{model_type} ({pr_mode}) — Кількість прикладів по довжині префікса")
+        plt.xlabel("prefix length")
+        plt.ylabel("count")
+        plt.grid(True, axis='y', alpha=0.3)
+        # нормалізувати підписи осі Х (тільки частину)
+        if len(df["prefix_len"]) > 30:
+            step = max(1, len(df["prefix_len"]) // 30)
+            for idx, label in enumerate(ax.get_xticklabels()):
+                if idx % step != 0:
+                    label.set_visible(False)
+        plt.tight_layout()
+        plt.savefig(f"{base_path}/{model_type}_{pr_mode}_prefix_count_bar.png")
+        plt.close()
+
+
+def plot_prefix_count_bar(df_counts, model_type: str, pr_mode: str, base_path: str):
+    """
+    Стовпчиковий графік кількості кейсів по довжині префікса.
+    Очікує DataFrame з колонками: prefix_len, count
+    """
+    plt.figure(figsize=(10, 4))
+    sns.barplot(data=df_counts, x="prefix_len", y="count", color="steelblue")
+    plt.title(f"{model_type} ({pr_mode}) — samples per prefix length")
+    plt.xlabel("prefix length L")
+    plt.ylabel("#samples")
+    plt.grid(True, axis="y", alpha=0.3)
+    out_path = f"{base_path}/{model_type}_{pr_mode}_prefix_counts.png"
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close()
+
+
+
+def plot_prefix_metric(
+    df: pd.DataFrame,
+    metric: str,
+    model_type: str,
+    pr_mode: str,
+    path: str,
+    kind: str = "line",
+    ylabel: str = None
+):
+    """
+    Побудова графіка однієї метрики залежно від довжини префікса.
+
+    kind:
+      - "line" → Line plot with error bands (mean ± std) + min/max
+      - "bar" → Bar plot (наприклад, для 'count')
+    """
+
+    if kind == "line":
+        mean_col = f"{metric}_mean"
+        std_col = f"{metric}_std"
+        min_col = f"{metric}_min"
+        max_col = f"{metric}_max"
+
+        if mean_col not in df.columns:
+            print(f"[WARN] {mean_col} не знайдено у DataFrame")
+            return
+
+        # Сортуємо дані за prefix_len
+        df = df.sort_values("prefix_len")
+
+        plt.figure(figsize=(12, 8))
+        x = df["prefix_len"]
+        mean = df[mean_col]
+        std = df[std_col] if std_col in df.columns else 0
+        lower = np.clip(mean - std, 0, 1)
+        upper = np.clip(mean + std, 0, 1)
+
+        # основна лінія mean
+        plt.plot(x, mean, label="mean", color="blue")
+        plt.fill_between(x, lower, upper, alpha=0.2, color="skyblue", label="± std")
+
+        # min / max (пунктиром)
+        if min_col in df.columns and max_col in df.columns:
+            plt.plot(x, df[min_col], linestyle="dashed", linewidth=0.5, color="gray", label="min", alpha=0.6)
+            plt.plot(x, df[max_col], linestyle="dashed", linewidth=0.5, color="black", label="max", alpha=0.6)
+
+        plt.title(f"{model_type} ({pr_mode}) — {metric} mean ± std")
+        plt.xlabel("prefix length")
+        plt.ylabel(ylabel if ylabel else metric)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+
+    elif kind == "box":
+        value_cols = [c for c in df.columns if c.startswith(metric)]
+        if not value_cols:
+            print(f"[WARN] {metric} не знайдено у DataFrame для boxplot")
+            return
+
+        plt.figure(figsize=(12, 8))
+        sns.boxplot(data=df, x="prefix_len", y=f"{metric}_mean", color="skyblue")
+
+        plt.title(f"{model_type} ({pr_mode}) — Boxplot {metric} по довжині префікса")
+        plt.xlabel("prefix length")
+        plt.ylabel(metric)
+        plt.grid(True, axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(path)
+        plt.close()
+
+
+    else:
+        raise ValueError("kind повинен бути 'line' або 'box'")
+
+
 def save_training_diagram_old(stats, file_path, test_stats=None):
     """
     Зберігає графік навчання та валідації, додаючи підписи значень для обраних епох.
@@ -974,7 +1137,7 @@ def plot_metric_over_epochs2(
     else:
         plt.show()
 
-def visualize_distribution(node_distribution, edge_distribution=None, prefix_distribution=None, file_path=None):
+def visualize_distribution(node_distribution=None, edge_distribution=None, prefix_distribution=None, file_path=None):
     """
     Візуалізує розподіл кількості вузлів, зв'язків та довжини префіксів у графах.
 
@@ -985,14 +1148,16 @@ def visualize_distribution(node_distribution, edge_distribution=None, prefix_dis
     """
     plt.figure(figsize=(22, 12))
     name = 'Node'
+
     # Розподіл кількості вузлів
-    plt.plot(
-        sorted(node_distribution.keys()),
-        [node_distribution[k] for k in sorted(node_distribution.keys())],
-        label='Node Count Distribution',
-        linestyle='-',
-        color='blue'
-    )
+    if node_distribution:
+        plt.plot(
+            sorted(node_distribution.keys()),
+            [node_distribution[k] for k in sorted(node_distribution.keys())],
+            label='Node Count Distribution',
+            linestyle='-',
+            color='blue'
+        )
 
     # Розподіл кількості зв'язків
     if edge_distribution:
@@ -1015,20 +1180,21 @@ def visualize_distribution(node_distribution, edge_distribution=None, prefix_dis
             color='green'
         )
         name = f'{name}, Prefix'
+    if node_distribution or edge_distribution or prefix_distribution:
+        plt.xlabel('Count')
+        plt.ylabel('Number of Graphs')
+        plt.title(f'{name} Length Distributions')
+        plt.legend()
+        plt.grid(True)
 
-    plt.xlabel('Count')
-    plt.ylabel('Number of Graphs')
-    plt.title(f'{name} Length Distributions')
-    plt.legend()
-    plt.grid(True)
-
-    if file_path:
-        plt.savefig(file_path)
-        plt.close()
-        print(f"Графік розподілення збережено у {file_path}")
+        if file_path:
+            plt.savefig(file_path)
+            plt.close()
+            print(f"Графік розподілення збережено у {file_path}")
+        else:
+            plt.show()
     else:
-        plt.show()
-
+        print("⚠️ Немає даних для побудови графіку розподілення.")
 
 def plot_avg_epoch_time_bar(
         df,

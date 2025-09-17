@@ -1,3 +1,7 @@
+from collections import defaultdict
+
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATConv, global_mean_pool
@@ -212,7 +216,215 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict
     avg_loss = total_loss / num_batches
     return avg_loss
 
-def calculate_statistics(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
+def calculate_statistics(
+    model,
+    val_data,
+    global_node_dict,
+    global_statistics,
+    batch_size=64,
+    top_k=3,
+    train_activity_counter=None,
+    min_count=1,
+    window_size=10
+):
+    model.eval()
+
+    # === Глобальні списки ===
+    all_preds, all_labels, all_pred_ids, all_true_ids = [], [], [], []
+    topk_hits, time_preds, time_labels = [], [], []
+
+    # === prefix-based агрегація ===
+    per_prefix = defaultdict(lambda: {
+        "accuracy": [], "f1": [], "precision": [], "recall": [],
+        "conf": [], "out_of_scope": [],
+        **{f"top{k}": [] for k in [1, 3, 5]}
+    })
+
+    num_batches = (len(val_data) + batch_size - 1) // batch_size
+
+    with torch.no_grad():
+        for batch_idx in tqdm(range(num_batches), desc="Валідація (батчами)", unit="батч"):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, len(val_data))
+            batch = val_data[start_idx:end_idx]
+
+            # Формування батчу
+            batch_tensor = torch.cat([
+                torch.full((item.x.size(0),), i, dtype=torch.long)
+                for i, item in enumerate(batch)
+            ], dim=0)
+
+            x = torch.cat([item.x for item in batch], dim=0)
+            edge_index = torch.cat([item.edge_index for item in batch], dim=1)
+            edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
+            doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+            timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], "timestamps") else None
+
+            y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
+            y_time = torch.stack([item.time_target for item in batch]).view(-1)
+
+            device = model.task_head.weight.device
+            x, edge_index, edge_attr, batch_tensor, doc_features = [
+                t.to(device) if t is not None else None
+                for t in [x, edge_index, edge_attr, batch_tensor, doc_features]
+            ]
+            y_task = y_task.to(device)
+            y_time = y_time.to(device)
+            if timestamps is not None:
+                timestamps = timestamps.to(device)
+
+            outputs_task, outputs_time = model.forward(
+                type("Batch", (object,), {
+                    "x": x,
+                    "edge_index": edge_index,
+                    "edge_features": edge_attr,
+                    "batch": batch_tensor,
+                    "doc_features": doc_features,
+                    "timestamps": timestamps
+                })
+            )
+
+            preds = torch.argmax(outputs_task, dim=1)
+            probs = torch.softmax(outputs_task, dim=1)
+            confs = torch.max(probs, dim=1).values.cpu().numpy()
+            topk_all = {k: torch.topk(outputs_task, k=k, dim=1).indices.cpu().numpy() for k in [1, 3, 5]}
+
+            # === глобальний збір ===
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(y_task.cpu().numpy())
+            time_preds.extend(outputs_time.view(-1).cpu().numpy())
+            time_labels.extend(y_time.cpu().numpy())
+
+            # === по кожному IG ===
+            for i, item in enumerate(batch):
+                prefix_len = int(item.prefix_mask.sum().item() if hasattr(item, "prefix_mask") else item.x[:, -1].sum().item())
+                acc_i = int(preds[i].cpu().item() == y_task[i].cpu().item())
+                f1_i = f1_score([y_task[i].cpu().item()], [preds[i].cpu().item()], average="macro", zero_division=0)
+                prec_i = precision_score([y_task[i].cpu().item()], [preds[i].cpu().item()], average="macro", zero_division=0)
+                rec_i = recall_score([y_task[i].cpu().item()], [preds[i].cpu().item()], average="macro", zero_division=0)
+                conf_i = confs[i]
+
+                # top-k
+                hits = {k: int(y_task[i].cpu().item() in topk_all[k][i]) for k in [1, 3, 5]}
+
+                per_prefix[prefix_len]["accuracy"].append(acc_i)
+                per_prefix[prefix_len]["f1"].append(f1_i)
+                per_prefix[prefix_len]["precision"].append(prec_i)
+                per_prefix[prefix_len]["recall"].append(rec_i)
+                per_prefix[prefix_len]["conf"].append(conf_i)
+                for k, v in hits.items():
+                    per_prefix[prefix_len][f"top{k}"].append(v)
+
+                # out-of-scope логіка
+                valid_global_indices = {global_node_dict.get(node_id) for node_id in item.node_ids}
+                pred_id = global_node_dict.get(item.node_ids[preds[i].item()]) if preds[i].item() < len(item.node_ids) else None
+                label_id = global_node_dict.get(item.node_ids[y_task[i].item()]) if y_task[i].item() < len(item.node_ids) else None
+
+                pred_invalid = pred_id not in valid_global_indices
+                label_invalid = label_id not in valid_global_indices
+                out_scope = int(pred_invalid or label_invalid)
+
+                per_prefix[prefix_len]["out_of_scope"].append(out_scope)
+                all_pred_ids.append(item.node_ids[preds[i].item()] if not pred_invalid else "INVALID")
+                all_true_ids.append(item.node_ids[y_task[i].item()] if not label_invalid else "INVALID")
+
+    # === глобальні метрики ===
+    valid_indices = [i for i, pred_id in enumerate(all_pred_ids) if pred_id != "INVALID"]
+    filtered_preds = [all_preds[i] for i in valid_indices]
+    filtered_labels = [all_labels[i] for i in valid_indices]
+
+    precision = precision_score(filtered_labels, filtered_preds, average="macro")
+    recall = recall_score(filtered_labels, filtered_preds, average="macro")
+    f1 = f1_score(filtered_labels, filtered_preds, average="macro")
+    acc = accuracy_score(filtered_labels, filtered_preds)
+
+    filtered_topk_hits = [topk_hits[i] for i in valid_indices] if topk_hits else []
+    top_k_accuracy = sum(filtered_topk_hits) / len(filtered_topk_hits) if filtered_topk_hits else 0.0
+
+    out_of_scope_count = len(all_preds) - len(filtered_preds)
+    out_of_scope_rate = out_of_scope_count / len(all_preds) if all_preds else 0
+
+    cm = confusion_matrix(all_labels, all_preds) if all_labels else None
+
+    # регресійні метрики
+    mae = mean_absolute_error(time_labels, time_preds)
+    mse = mean_squared_error(time_labels, time_preds)
+    rmse = mse ** 0.5
+    r2 = max(0, r2_score(time_labels, time_preds))
+
+    min_dur = global_statistics["node_numeric"]["duration_work"]["min"]
+    max_dur = global_statistics["node_numeric"]["duration_work"]["max"]
+    if max_dur > min_dur:
+        denorm_time_preds = [(v * (max_dur - min_dur) + min_dur) for v in time_preds]
+        denorm_time_labels = [(v * (max_dur - min_dur) + min_dur) for v in time_labels]
+
+        mae_real = mean_absolute_error(denorm_time_labels, denorm_time_preds)
+        mse_real = mean_squared_error(denorm_time_labels, denorm_time_preds)
+        rmse_real = mse_real ** 0.5
+        r2_real = max(0, r2_score(denorm_time_labels, denorm_time_preds))
+    else:
+        mae_real = mse_real = rmse_real = r2_real = None
+
+    # статистика по активностям
+    from collections import Counter
+    activity_total_counter = Counter()
+    activity_correct_counter = Counter()
+    for true_label, pred_label in zip(all_labels, all_preds):
+        activity_total_counter[true_label] += 1
+        if true_label == pred_label:
+            activity_correct_counter[true_label] += 1
+
+    activity_train_vs_val_accuracy = {
+        node_idx: {
+            "train_count": train_activity_counter.get(node_idx, 0) if train_activity_counter else 0,
+            "val_accuracy": (activity_correct_counter[node_idx] / activity_total_counter[node_idx])
+            if activity_total_counter[node_idx] > 0 else None
+        }
+        for node_idx in global_node_dict.values()
+    }
+
+    # === Префіксна статистика ===
+    prefix_stats = []
+    for L, bucket in per_prefix.items():
+        row = {"prefix_len": L, "count": len(bucket["accuracy"])}
+        for key, values in bucket.items():
+            if not values:
+                continue
+            row[f"{key}_mean"] = np.mean(values)
+            row[f"{key}_std"] = np.std(values)
+            row[f"{key}_min"] = np.min(values)
+            row[f"{key}_max"] = np.max(values)
+        prefix_stats.append(row)
+
+    df = pd.DataFrame(prefix_stats).sort_values("prefix_len").reset_index(drop=True)
+
+    if min_count > 1:
+        df["count_filt"] = df["count"].copy()
+        mask = df["count"] < min_count
+        df.loc[mask, df.columns.difference(["prefix_len", "count", "count_filt"])] = np.nan
+
+    if window_size > 1:
+        cols = [c for c in df.columns if c not in ["prefix_len", "count", "count_filt"]]
+        df[cols] = df[cols].rolling(window=window_size, min_periods=1, center=True).mean()
+
+    return {
+        "accuracy": acc,
+        "top_k_accuracy": top_k_accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "confusion_matrix": cm,
+        "true_node_ids": all_true_ids,
+        "pred_node_ids": all_pred_ids,
+        "mae": mae_real,
+        "rmse": rmse_real,
+        "r2": r2_real,
+        "out_of_scope_rate": out_of_scope_rate,
+        "activity_train_vs_val_accuracy": activity_train_vs_val_accuracy,
+        "prefix_stats": df.to_dict(orient="records")
+    }
+
+def calculate_statistics2(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):
     model.eval()
     all_preds = []
     all_labels = []

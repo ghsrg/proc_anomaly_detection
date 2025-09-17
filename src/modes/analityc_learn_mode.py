@@ -7,14 +7,14 @@ from src.config.config import LEARN_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_P
 
 #logger = get_logger(__name__)
 
-def run_analitics_mode(args):
+def run_analitics_learn_mode(args):
     """
     Аналітики резульатів.
     """
     seed=9467
     seed=None
    # logger.info("🚀 Запущено аналітичний режим.")
-    print("⚙️ Виконується аналітичний режим ...")
+    print("⚙️ Виконується аналітичний режим навчання...")
 
     final_df = aggregate_statistics(LEARN_PR_DIAGRAMS_PATH) #комбінована статистика навчання
     final_df_file = join_path([LEARN_PR_DIAGRAMS_PATH, f'final_df_statistics.xlsx'])
