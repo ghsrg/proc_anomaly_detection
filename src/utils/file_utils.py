@@ -63,6 +63,7 @@ def aggregate_statistics(directory_path):
     final_df = pd.DataFrame(all_results)
     return final_df
 
+
 def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
     """
     Агрегація статистики по всім архітектурам / data_type / seed.
@@ -111,6 +112,64 @@ def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
     final_df = pd.concat(all_results, ignore_index=True)
     return final_df
 
+
+def summarize_prefix_statistics(final_df: pd.DataFrame, filters: dict = None) -> pd.DataFrame:
+    """
+    Узагальнює статистику по довжині префіксів.
+    - Застосовує фільтри (architecture, data_type, seed), якщо передані.
+    - Групує ТІЛЬКИ за prefix_len, об’єднуючи всі архітектури/сид-и/типи даних.
+    - Для кожної метрики *_mean бере:
+        mean = середнє по seed/архітектурах
+        std  = std від *_mean по seed/архітектурах
+        min  = min від *_mean
+        max  = max від *_mean
+    - count → сумарний
+    """
+
+    if final_df is None or final_df.empty:
+        print("[WARN] summarize_prefix_statistics: порожній DataFrame")
+        return final_df
+
+    df = final_df.copy()
+
+    # === Фільтрація ===
+    if filters:
+        for key, values in filters.items():
+            if key in df.columns and values:
+                df = df[df[key].isin(values)]
+    if df.empty:
+        print("[WARN] summarize_prefix_statistics: порожньо після фільтрів")
+        return df
+
+    if "prefix_len" not in df.columns:
+        raise KeyError("Очікувана колонка 'prefix_len' відсутня")
+
+    # базові метрики як префікси колонок *_mean
+    base_metrics = sorted({c[:-5] for c in df.columns if c.endswith("_mean") and c not in ("seed_mean",)})
+    if not base_metrics:
+        print("[WARN] summarize_prefix_statistics: немає колонок '*_mean'")
+        return df
+
+    group_cols = ["prefix_len"]
+
+    def _agg_one_group(g: pd.DataFrame) -> pd.Series:
+        out = {"prefix_len": g["prefix_len"].iloc[0], "count": int(np.nansum(g["count"].values))}
+        for m in base_metrics:
+            vals = g[f"{m}_mean"].values.astype(float)
+            out[f"{m}_mean"] = float(np.nanmean(vals))
+            out[f"{m}_std"]  = float(np.nanstd(vals))
+            out[f"{m}_min"]  = float(np.nanmin(vals))
+            out[f"{m}_max"]  = float(np.nanmax(vals))
+        return pd.Series(out)
+
+    agg_df = (
+        df.groupby(group_cols, as_index=False)
+          .apply(_agg_one_group)
+          .reset_index(drop=True)
+          .sort_values("prefix_len")
+    )
+
+    return agg_df
 def load_and_aggregate_confusion_matrices(
     folder_path,
     data_type_filter="bpmn",
