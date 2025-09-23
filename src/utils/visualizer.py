@@ -191,7 +191,56 @@ def plot_prefix_count_bar(df_counts, model_type: str, pr_mode: str, base_path: s
     plt.savefig(out_path)
     plt.close()
 
+def plot_arch_prefix_statistics(df: pd.DataFrame, filters: dict = None, metric: str = "accuracy", title = '', path: str = None):
+    """
+    Побудова графіка для порівняння архітектур.
+    Усереднює по seed і будує криві для кожної архітектури.
 
+    :param df: DataFrame після summarize_prefix_statistics
+    :param filters: dict з умовами, напр. {"data_type": ["bpmn"]}
+    :param metric: яку метрику малювати ("accuracy", "f1", "precision", "recall", "conf", "out_of_scope", "top1", "top3", "top5")
+    :param path: шлях для збереження PNG
+    :return: агрегований DataFrame
+    """
+
+    # --- застосування фільтрів ---
+    if filters:
+        for key, values in filters.items():
+            df = df[df[key].isin(values)]
+
+    # --- перевірка колонок ---
+    mean_col = f"{metric}_mean"
+    if mean_col not in df.columns:
+        raise ValueError(f"У DataFrame немає колонки {mean_col}")
+
+    # --- усереднення по seed ---
+    agg_df = (
+        df.groupby(["architecture", "prefix_len"])
+        .agg({mean_col: "mean"})
+        .reset_index()
+    )
+
+    # --- побудова графіка ---
+    plt.figure(figsize=(12, 8))
+    for arch in agg_df["architecture"].unique():
+        sub = agg_df[agg_df["architecture"] == arch]
+        plt.plot(sub["prefix_len"], sub[mean_col], label=arch)
+
+    plt.title(title,fontsize=24)
+    plt.xlabel("prefix length", fontsize=20)
+    plt.tick_params(axis='both', labelsize=18)
+    plt.ylabel(metric, fontsize=20)
+    plt.legend(fontsize=16)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    if path:
+        plt.savefig(path)
+        plt.close()
+    else:
+        plt.show()
+
+    return agg_df
 
 def plot_prefix_metric(
     df: pd.DataFrame,
@@ -239,10 +288,11 @@ def plot_prefix_metric(
             plt.plot(x, df[min_col], linestyle="dashed", linewidth=0.5, color="gray", label="min", alpha=0.6)
             plt.plot(x, df[max_col], linestyle="dashed", linewidth=0.5, color="black", label="max", alpha=0.6)
 
-        plt.title(f"{model_type} ({pr_mode}) — {metric} mean ± std")
-        plt.xlabel("prefix length")
-        plt.ylabel(ylabel if ylabel else metric)
-        plt.legend()
+        plt.title(f"{model_type} ({pr_mode}) — {metric} mean ± std", fontsize=24)
+        plt.xlabel("prefix length", fontsize=20)
+        plt.ylabel(ylabel if ylabel else metric, fontsize=20)
+        plt.tick_params(axis='both', labelsize=18)
+        plt.legend(fontsize=16)
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig(path)
@@ -1146,7 +1196,7 @@ def visualize_distribution(node_distribution=None, edge_distribution=None, prefi
     :param prefix_distribution: Розподіл довжини префіксів (опціонально).
     :param file_path: Шлях до файлу для збереження графіка (опціонально).
     """
-    plt.figure(figsize=(22, 12))
+    plt.figure(figsize=(22, 10))
     name = 'Node'
 
     # Розподіл кількості вузлів
@@ -1181,9 +1231,11 @@ def visualize_distribution(node_distribution=None, edge_distribution=None, prefi
         )
         name = f'{name}, Prefix'
     if node_distribution or edge_distribution or prefix_distribution:
-        plt.xlabel('Count')
-        plt.ylabel('Number of Graphs')
-        plt.title(f'{name} Length Distributions')
+        plt.xlabel('Count', fontsize=20)
+        plt.ylabel('Number of Graphs', fontsize=20)
+        plt.title(f'{name} Length Distributions',fontsize=24)
+        plt.tick_params(axis='both', labelsize=18)
+
         plt.legend()
         plt.grid(True)
 

@@ -63,6 +63,34 @@ def aggregate_statistics(directory_path):
     final_df = pd.DataFrame(all_results)
     return final_df
 
+import pandas as pd
+
+def summarize_architecture_metrics(full_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Формує зведену таблицю по архітектурам, усереднюючи метрики по всіх префіксах.
+    Вивід: mean ± std (по prefix_len) для кожної архітектури / data_type / seed.
+    """
+
+    metrics = ["accuracy", "f1", "precision", "recall",
+               "out_of_scope", "top1", "top3", "top5"]
+
+    results = []
+    for (arch, dtype, seed), group in full_df.groupby(["architecture", "data_type", "seed"]):
+        row = {"Архітектура": arch, "Тип": dtype, "Seed": seed}
+        for m in metrics:
+            mean_col = f"{m}_mean"
+            std_col = f"{m}_std"
+            if mean_col in group.columns and std_col in group.columns:
+                mean_val = group[mean_col].mean()
+                std_val = group[std_col].mean()
+                row[m] = f"{mean_val:.3f} ± {std_val:.3f}"
+        results.append(row)
+
+    df_summary = pd.DataFrame(results)
+
+    # впорядкувати колонки
+    cols = ["Архітектура", "Тип", "Seed"] + metrics
+    return df_summary[cols]
 
 def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
     """
@@ -111,6 +139,7 @@ def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
     # Об’єднати все в один DataFrame
     final_df = pd.concat(all_results, ignore_index=True)
     return final_df
+
 
 
 def summarize_prefix_statistics(final_df: pd.DataFrame, filters: dict = None) -> pd.DataFrame:

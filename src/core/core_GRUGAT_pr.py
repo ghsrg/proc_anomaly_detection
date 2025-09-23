@@ -97,6 +97,61 @@ def train_epoch(model, data, optimizer, batch_size=64, alpha=0, global_node_dict
     total_loss = 0
     num_batches = (len(data) + batch_size - 1) // batch_size
 
+    for batch_idx in tqdm(range(num_batches), desc="Батчі", unit="батч", position=1,leave=False, dynamic_ncols=True):
+
+        start_idx = batch_idx * batch_size
+        end_idx = min((batch_idx + 1) * batch_size, len(data))
+        batch = data[start_idx:end_idx]
+
+        batch_tensor = torch.cat([torch.full((item.x.size(0),), idx, dtype=torch.long) for idx, item in enumerate(batch)], dim=0)
+        x = torch.cat([item.x for item in batch], dim=0)
+        edge_index = torch.cat([item.edge_index for item in batch], dim=1)
+        edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
+        doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
+        timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], 'timestamps') else None
+
+        y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
+        y_time = torch.stack([item.time_target for item in batch]).view(-1)
+
+        # Переносимо на GPU якщо є
+        x, edge_index, edge_attr, batch_tensor, doc_features = [t.to(model.task_head.weight.device) if t is not None else None for t in [x, edge_index, edge_attr, batch_tensor, doc_features]]
+        y_task = y_task.to(model.task_head.weight.device)
+        y_time = y_time.to(model.task_head.weight.device)
+
+        optimizer.zero_grad()
+        outputs_task, outputs_time = model.forward(
+            type("Batch", (object,), {
+                "x": x,
+                "edge_index": edge_index,
+                "edge_features": edge_attr,
+                "batch": batch_tensor,
+                "doc_features": doc_features,
+                "timestamps": timestamps
+            })
+        )
+
+        loss_task = nn.CrossEntropyLoss()(outputs_task, y_task)
+        loss_time = nn.MSELoss()(outputs_time.view(-1), y_time)
+        loss = loss_task + alpha * loss_time
+
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+        if global_node_dict is not None and train_activity_counter is not None:
+            for label in y_task.cpu().numpy():
+                if label in global_node_dict.values():
+                    train_activity_counter[label] += 1
+
+    avg_loss = total_loss / num_batches
+    return avg_loss
+
+
+def train_epoch2(model, data, optimizer, batch_size=64, alpha=0, global_node_dict=None, train_activity_counter=None):
+    model.train()
+    total_loss = 0
+    num_batches = (len(data) + batch_size - 1) // batch_size
+
     for batch_idx in range(num_batches):
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, len(data))
@@ -360,7 +415,6 @@ def calculate_statistics(
         "activity_train_vs_val_accuracy": activity_train_vs_val_accuracy,
         "prefix_stats": df.to_dict(orient="records")
     }
-
 
 
 def calculate_statistics2(model, val_data, global_node_dict, global_statistics, batch_size=64, top_k=3, train_activity_counter=None):

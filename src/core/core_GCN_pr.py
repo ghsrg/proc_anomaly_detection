@@ -809,3 +809,94 @@ def prepare_data_log_only(normal_graphs):
 
     return data_list, max_features, max_doc_dim, global_node_dict
 
+def prepare_data_log_only2(normal_graphs):
+    data_list = []
+    max_features = 0
+    max_doc_dim = 0
+    global_node_dict = {}
+
+    def transform_doc(doc_info, selected_doc_attrs):
+        return torch.tensor([
+            float(doc_info.get(attr, 0) or 0.0) for attr in selected_doc_attrs
+        ], dtype=torch.float)
+
+    def transform_graph(node_ids, graph, current_nodes, next_node, node_attrs, doc_info, selected_doc_attrs):
+        nonlocal max_features
+        simplified_node_ids = [simplify_bpmn_id(n) for n in node_ids]
+
+        for node_id in simplified_node_ids:
+            if node_id not in global_node_dict:
+                global_node_dict[node_id] = len(global_node_dict)
+
+        node_map = {node: idx for idx, node in enumerate(node_ids)}
+        x = torch.tensor([
+            [float(graph.nodes[n].get(attr, 0)) if isinstance(graph.nodes[n].get(attr), (int, float)) else 0.0
+             for attr in node_attrs]
+            for n in node_ids
+        ], dtype=torch.float)
+
+        active_mask = torch.tensor([
+            1.0 if n in current_nodes else 0.0 for n in node_ids
+        ], dtype=torch.float).view(-1, 1)
+        x = torch.cat([x, active_mask], dim=1)
+
+        if x.shape[1] > 0:
+            max_features = max(max_features, x.shape[1])
+
+        timestamps = torch.tensor([
+            float(graph.nodes[n].get("START_TIME_", 0.0)) if n in current_nodes else 1.1
+            for n in node_ids
+        ], dtype=torch.float)
+
+        edge_list = [(node_map[node_ids[i]], node_map[node_ids[i+1]]) for i in range(len(current_nodes)-1)]
+        edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous() if edge_list else torch.empty((2, 0), dtype=torch.long)
+        edge_attr = torch.ones((edge_index.shape[1], 1), dtype=torch.float)
+
+        doc_features = transform_doc(doc_info, selected_doc_attrs)
+        time_target = torch.tensor([graph.nodes[next_node].get("duration_work", 0.0)], dtype=torch.float)
+        inverse_node_map = [simplify_bpmn_id(n) for n in node_ids]
+
+        return Data(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            y=torch.tensor([node_map[next_node]], dtype=torch.long),
+            doc_features=doc_features,
+            time_target=time_target,
+            node_ids=inverse_node_map,
+            timestamps=timestamps
+        )
+
+    selected_node_attrs = [
+        "DURATION_", "START_TIME_", "PROC_KEY_", "active_executions", "user_compl_login",
+        "SEQUENCE_COUNTER_", "taskaction_code", "task_status"
+    ]
+    selected_doc_attrs = [
+        "PurchasingBudget", "InitialPrice", "FinalPrice", "ExpectedDate",
+        "CategoryL1", "CategoryL2", "CategoryL3", "ClassSSD", "Company_SO"
+    ]
+
+    for _, row in tqdm(normal_graphs.iterrows(), desc="Обробка графів як логів", total=len(normal_graphs)):
+        graph_file = row["graph_path"]
+        doc_info = row.get("doc_info", {})
+        full_path = join_path([NORMALIZED_PR_NORMAL_GRAPH_PATH, graph_file])
+        graph = load_graph(full_path)
+
+        executed_nodes = [(n, d) for n, d in graph.nodes(data=True) if d.get("SEQUENCE_COUNTER_", 0) > 0]
+        if len(executed_nodes) < 2:
+            continue
+
+        executed_nodes.sort(key=lambda x: x[1].get("SEQUENCE_COUNTER_", 0))
+        node_ids = [n for n, _ in executed_nodes]
+
+        for i in range(1, len(node_ids)):
+            current_nodes = node_ids[:i]
+            next_node = node_ids[i]
+
+            data = transform_graph(node_ids, graph, current_nodes, next_node, selected_node_attrs, doc_info, selected_doc_attrs)
+            if data:
+                data_list.append(data)
+                max_doc_dim = max(max_doc_dim, data.doc_features.numel())
+
+    return data_list, max_features, max_doc_dim, global_node_dict
+

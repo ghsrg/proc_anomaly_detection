@@ -187,39 +187,24 @@ def calculate_statistics(
             end_idx = min((batch_idx + 1) * batch_size, len(val_data))
             batch = val_data[start_idx:end_idx]
 
-            # Формування батчу
-            batch_tensor = torch.cat([
-                torch.full((item.x.size(0),), i, dtype=torch.long)
-                for i, item in enumerate(batch)
-            ], dim=0)
-
             x = torch.cat([item.x for item in batch], dim=0)
-            edge_index = torch.cat([item.edge_index for item in batch], dim=1)
-            edge_attr = torch.cat([item.edge_attr for item in batch], dim=0) if batch[0].edge_attr is not None else None
-            doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[0].doc_features is not None else None
-            timestamps = torch.cat([item.timestamps for item in batch], dim=0) if hasattr(batch[0], "timestamps") else None
+            doc_features = torch.stack([item.doc_features for item in batch], dim=0) if batch[
+                                                                                            0].doc_features is not None else None
 
             y_task = torch.tensor([item.y.item() for item in batch], dtype=torch.long)
             y_time = torch.stack([item.time_target for item in batch]).view(-1)
 
-            device = model.task_head.weight.device
-            x, edge_index, edge_attr, batch_tensor, doc_features = [
-                t.to(device) if t is not None else None
-                for t in [x, edge_index, edge_attr, batch_tensor, doc_features]
+            x, doc_features = [
+                t.to(model.task_head.weight.device) if t is not None else None
+                for t in [x, doc_features]
             ]
-            y_task = y_task.to(device)
-            y_time = y_time.to(device)
-            if timestamps is not None:
-                timestamps = timestamps.to(device)
+            y_task = y_task.to(model.task_head.weight.device)
+            y_time = y_time.to(model.task_head.weight.device)
 
             outputs_task, outputs_time = model.forward(
                 type("Batch", (object,), {
                     "x": x,
-                    "edge_index": edge_index,
-                    "edge_features": edge_attr,
-                    "batch": batch_tensor,
-                    "doc_features": doc_features,
-                    "timestamps": timestamps
+                    "doc_features": doc_features
                 })
             )
 

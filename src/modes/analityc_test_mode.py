@@ -1,8 +1,8 @@
 # Режим виконання
 #from src.utils.logger import get_logger
-from src.utils.file_utils import aggregate_prefix_statistics, summarize_prefix_statistics, aggregate_metric_over_epochs, save_aggregated_statistics, load_and_aggregate_confusion_matrices, combine_activity_stat_files, save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
+from src.utils.file_utils import aggregate_prefix_statistics,summarize_architecture_metrics, summarize_prefix_statistics, aggregate_metric_over_epochs, save_aggregated_statistics, load_and_aggregate_confusion_matrices, combine_activity_stat_files, save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
-from src.utils.visualizer import plot_prefix_metric, plot_metric_over_epochs, visualize_diff_conf_matrix, plot_architecture_radar_by_metric,plot_regression_logs_vs_bpmn, plot_class_bar_chart,visualize_aggregated_conf_matrix, visualize_confusion_matrix, plot_avg_epoch_time_bar, plot_regression_by_architecture
+from src.utils.visualizer import plot_prefix_metric,plot_arch_prefix_statistics, plot_metric_over_epochs, visualize_diff_conf_matrix, plot_architecture_radar_by_metric,plot_regression_logs_vs_bpmn, plot_class_bar_chart,visualize_aggregated_conf_matrix, visualize_confusion_matrix, plot_avg_epoch_time_bar, plot_regression_by_architecture
 from src.config.config import TEST_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
 
 #logger = get_logger(__name__)
@@ -20,15 +20,50 @@ def run_analitics_test_mode(args):
     full_df_file = join_path([TEST_PR_DIAGRAMS_PATH, f'final_df_statistics.xlsx'])
     save_aggregated_statistics(full_df, full_df_file)
 
+    summary_table = summarize_architecture_metrics(full_df)
+    summary_table_file = join_path([TEST_PR_DIAGRAMS_PATH, f'summary_table_statistics.xlsx'])
+    save_aggregated_statistics(summary_table, summary_table_file)
+
+    plot_arch_prefix_statistics(
+        full_df,
+        filters={"data_type": ["bpmn"]},
+        metric="accuracy",
+        title="Accuracy by architecture (BPMN mode)",
+        path=f"{TEST_PR_DIAGRAMS_PATH}/bpmn_arch_accuracy.png"
+    )
+    plot_arch_prefix_statistics(
+        full_df,
+        filters={"data_type": ["logs"]},
+        metric="accuracy",
+        title="Accuracy by architecture (logs only)",
+        path=f"{TEST_PR_DIAGRAMS_PATH}/logs_arch_accuracy.png"
+    )
+
     sum_bpmn_df = summarize_prefix_statistics(
         full_df,
         filters={"data_type": ["bpmn"]}
     )
-    #summarize_df_file = join_path([TEST_PR_DIAGRAMS_PATH, f'summarize_df_bpmn_statistics.xlsx'])
-    #save_aggregated_statistics(sum_bpmn_df, summarize_df_file)
+    summarize_df_file = join_path([TEST_PR_DIAGRAMS_PATH, f'summarize_df_bpmn_statistics.xlsx'])
+    save_aggregated_statistics(sum_bpmn_df, summarize_df_file)
 
     plot_prefix_metric(sum_bpmn_df, "accuracy", 'Aggregated', 'bpmn',
                        f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_accuracy.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "conf", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_conf.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "f1", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_f1.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "precision", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_precision.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "out_of_scope", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_out_of_scope.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "recall", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_recall.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "top1", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_top1.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "top3", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_top3.png", kind="line")
+    plot_prefix_metric(sum_bpmn_df, "top5", 'Aggregated', 'bpmn',
+                       f"{TEST_PR_DIAGRAMS_PATH}/bpmn_pref-len_top5.png", kind="line")
 
     sum_logs_df = summarize_prefix_statistics(
         full_df,
@@ -39,7 +74,22 @@ def run_analitics_test_mode(args):
 
     plot_prefix_metric(sum_logs_df, "accuracy", 'Aggregated', 'logs',
                        f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_accuracy.png", kind="line")
-
+    plot_prefix_metric(sum_logs_df, "conf", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_conf.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "f1", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_f1.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "precision", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_precision.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "out_of_scope", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_out_of_scope.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "recall", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_recall.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "top1", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_top1.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "top3", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_top3.png", kind="line")
+    plot_prefix_metric(sum_logs_df, "top5", 'Aggregated', 'logs',
+                       f"{TEST_PR_DIAGRAMS_PATH}/logs_pref-len_top5.png", kind="line")
     exit()
 
     combined_df = combine_activity_stat_files(TEST_PR_DIAGRAMS_PATH) #комбінована статистика розподілу
