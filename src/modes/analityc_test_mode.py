@@ -1,6 +1,6 @@
 # Режим виконання
 #from src.utils.logger import get_logger
-from src.utils.file_utils import aggregate_prefix_statistics,summarize_architecture_metrics, summarize_prefix_statistics, aggregate_metric_over_epochs, save_aggregated_statistics, load_and_aggregate_confusion_matrices, combine_activity_stat_files, save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
+from src.utils.file_utils import aggregate_prefix_statistics, paired_ttest_bpmn_vs_logs, summarize_by_prefix_bins, summarize_architecture_metrics, summarize_prefix_statistics, aggregate_metric_over_epochs, save_aggregated_statistics, load_and_aggregate_confusion_matrices, combine_activity_stat_files, save_checkpoint, load_checkpoint, load_register, save_prepared_data, load_prepared_data, load_global_statistics_from_json, save2csv
 from src.utils.file_utils_l import is_file_exist, join_path
 from src.utils.visualizer import plot_prefix_metric,plot_arch_prefix_statistics, plot_metric_over_epochs, visualize_diff_conf_matrix, plot_architecture_radar_by_metric,plot_regression_logs_vs_bpmn, plot_class_bar_chart,visualize_aggregated_conf_matrix, visualize_confusion_matrix, plot_avg_epoch_time_bar, plot_regression_by_architecture
 from src.config.config import TEST_PR_DIAGRAMS_PATH, NN_PR_MODELS_CHECKPOINTS_PATH, NN_PR_MODELS_DATA_PATH, PROCESSED_DATA_PATH
@@ -19,6 +19,15 @@ def run_analitics_test_mode(args):
     full_df = aggregate_prefix_statistics(TEST_PR_DIAGRAMS_PATH) #комбінована статистика
     full_df_file = join_path([TEST_PR_DIAGRAMS_PATH, f'final_df_statistics.xlsx'])
     save_aggregated_statistics(full_df, full_df_file)
+
+    t_stat, p_val, pivot = paired_ttest_bpmn_vs_logs(full_df)
+    print(f"Paired t-test BPMN vs Logs: t-statistic={t_stat}, p-value={p_val}")
+    print(pivot)
+
+    df_summary = summarize_by_prefix_bins(full_df, metric="accuracy")
+    summary_df_file = join_path([TEST_PR_DIAGRAMS_PATH, f'summarize_by_prefix_bins.xlsx'])
+
+    save_aggregated_statistics(df_summary, summary_df_file)
 
     summary_table = summarize_architecture_metrics(full_df)
     summary_table_file = join_path([TEST_PR_DIAGRAMS_PATH, f'summary_table_statistics.xlsx'])

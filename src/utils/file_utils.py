@@ -92,6 +92,213 @@ def summarize_architecture_metrics(full_df: pd.DataFrame) -> pd.DataFrame:
     cols = ["Архітектура", "Тип", "Seed"] + metrics
     return df_summary[cols]
 
+import pandas as pd
+import numpy as np
+
+def summarize_by_prefix_bins_mean(full_df: pd.DataFrame, metric: str = "accuracy_mean") -> pd.DataFrame:
+    """
+    Агрегує статистику по діапазонах довжин префіксів для Logs-only та BPMN-based.
+
+    Parameters
+    ----------
+    full_df : pd.DataFrame
+        Результати після aggregate_prefix_statistics з колонками:
+        ['prefix_len', 'accuracy_mean', ..., 'architecture','data_type','seed']
+    metric : str
+        Метрика для агрегації (наприклад 'accuracy_mean', 'f1_mean').
+
+    Returns
+    -------
+    summary_df : pd.DataFrame
+        Таблиця формату:
+        | Префікс (довжина) | Logs-only | BPMN-based |
+    """
+
+    # визначаємо бінування довжин
+    bins = [0, 10, 50, 100, 250, np.inf]
+    labels = ["0–9", "10–49", "50–99", "100–250", ">250"]
+
+    # додаємо категорію
+    full_df["prefix_bin"] = pd.cut(full_df["prefix_len"], bins=bins, labels=labels, right=False)
+
+    # групування
+    grouped = (
+        full_df.groupby(["prefix_bin", "data_type"])[metric]
+        .mean()
+        .unstack(fill_value=np.nan)
+        .reset_index()
+    )
+
+    # перейменування колонок
+    grouped = grouped.rename(columns={"prefix_bin": "Префікс (довжина)",
+                                      "logs": "Logs-only",
+                                      "bpmn": "BPMN-based"})
+
+    return grouped
+
+from scipy.stats import ttest_rel
+
+def paired_ttest_bpmn_vs_logs(full_df: pd.DataFrame):
+    """
+    Порівнює BPMN-based та Logs-only режими через парний t-тест
+    по accuracy для архітектур GNN.
+    """
+    # Переконаємось, що числові колонки обробляються правильно
+    df = full_df.copy()
+    for col in ["accuracy_mean"]:
+        df[col] = df[col].astype(str).str.replace(",", ".").astype(float)
+
+    # усереднити по архітектурі та data_type
+    grouped = df.groupby(["architecture", "data_type"])["accuracy_mean"].mean().reset_index()
+
+    # зробимо таблицю архітектура × тип
+    pivot = grouped.pivot(index="architecture", columns="data_type", values="accuracy_mean")
+
+    # візьмемо тільки архітектури, де є обидва режими
+    pivot = pivot.dropna()
+
+    # підготовка масивів
+    bpmn_acc = pivot["bpmn"].values
+    logs_acc = pivot["logs"].values
+
+    # t-test
+    t_stat, p_val = ttest_rel(bpmn_acc, logs_acc)
+    dfree = len(bpmn_acc) - 1
+
+    print("=== Paired t-test BPMN vs Logs ===")
+    print(f"t({dfree}) = {t_stat:.2f}, p = {p_val:.4e}")
+    return t_stat, p_val, pivot
+
+import pandas as pd
+import numpy as np
+from scipy.stats import ttest_rel
+
+def summarize_by_prefix_bins(full_df: pd.DataFrame, metric: str = "accuracy") -> pd.DataFrame:
+    """
+    Агрегує статистику по діапазонах довжин префіксів для Logs-only та BPMN-based
+    та рахує парний t-тест для кожного діапазону.
+    Повертає значення у форматі 'mean ± std' і додає t(12) та p-value.
+
+    Parameters
+    ----------
+    full_df : pd.DataFrame
+        Результати після aggregate_prefix_statistics з колонками:
+        ['prefix_len', '{metric}_mean', '{metric}_std', 'data_type', 'architecture', ...]
+    metric : str
+        Назва метрики (без '_mean' чи '_std').
+
+    Returns
+    -------
+    summary_df : pd.DataFrame
+        Таблиця формату:
+        | Префікс (довжина) | Logs-only | BPMN-based | t(12) | p-value |
+    """
+
+    # визначаємо бінування довжин
+    bins = [0, 10, 50, 100, 250, np.inf]
+    labels = ["0–9", "10–49", "50–99", "100–250", ">250"]
+
+    # додаємо категорію
+    full_df = full_df.copy()
+    full_df["prefix_bin"] = pd.cut(full_df["prefix_len"], bins=bins, labels=labels, right=False)
+
+    # групування для mean і std
+    grouped = (
+        full_df.groupby(["prefix_bin", "data_type"])
+        .agg({f"{metric}_mean": "mean", f"{metric}_std": "mean"})
+        .reset_index()
+    )
+
+    # об'єднуємо mean і std у формат рядка
+    grouped["value"] = grouped.apply(
+        lambda x: f"{x[f'{metric}_mean']:.3f} ± {x[f'{metric}_std']:.3f}", axis=1
+    )
+
+    # робимо широку таблицю (Logs vs BPMN)
+    summary = grouped.pivot(index="prefix_bin", columns="data_type", values="value").reset_index()
+    summary = summary.rename(columns={
+        "prefix_bin": "Префікс (довжина)",
+        "logs": "Logs-only",
+        "bpmn": "BPMN-based"
+    })
+
+    # обчислюємо t-тести по кожному біну
+    results = []
+    for label in labels:
+        bin_df = full_df[full_df["prefix_bin"] == label]
+        logs_vals = (
+            bin_df[bin_df["data_type"] == "logs"]
+            .groupby("architecture")[f"{metric}_mean"].mean()
+        )
+        bpmn_vals = (
+            bin_df[bin_df["data_type"] == "bpmn"]
+            .groupby("architecture")[f"{metric}_mean"].mean()
+        )
+
+        common_archs = logs_vals.index.intersection(bpmn_vals.index)
+        if len(common_archs) > 1:  # щоби було що порівнювати
+            t_stat, p_val = ttest_rel(bpmn_vals.loc[common_archs], logs_vals.loc[common_archs])
+            results.append((f"t({len(common_archs)-1}) = {t_stat:.2f}", f"{p_val:.2e}"))
+        else:
+            results.append(("N/A", "N/A"))
+
+    summary["t-test"] = [r[0] for r in results]
+    summary["p-value"] = [r[1] for r in results]
+
+    return summary
+
+
+def summarize_by_prefix_bins2(full_df: pd.DataFrame, metric: str = "accuracy") -> pd.DataFrame:
+    """
+    Агрегує статистику по діапазонах довжин префіксів для Logs-only та BPMN-based.
+    Повертає значення у форматі 'mean ± std'.
+
+    Parameters
+    ----------
+    full_df : pd.DataFrame
+        Результати після aggregate_prefix_statistics з колонками:
+        ['prefix_len', '{metric}_mean', '{metric}_std', 'data_type', ...]
+    metric : str
+        Назва метрики (без '_mean' чи '_std').
+
+    Returns
+    -------
+    summary_df : pd.DataFrame
+        Таблиця формату:
+        | Префікс (довжина) | Logs-only | BPMN-based |
+    """
+
+    # визначаємо бінування довжин
+    bins = [0, 10, 50, 100, 250, np.inf]
+    labels = ["0–9", "10–49", "50–99", "100–250", ">250"]
+
+    # додаємо категорію
+    full_df["prefix_bin"] = pd.cut(full_df["prefix_len"], bins=bins, labels=labels, right=False)
+
+    # групування для mean і std
+    grouped = (
+        full_df.groupby(["prefix_bin", "data_type"])
+        .agg({f"{metric}_mean": "mean", f"{metric}_std": "mean"})
+        .reset_index()
+    )
+
+    # об'єднуємо mean і std у формат рядка
+    grouped["value"] = grouped.apply(
+        lambda x: f"{x[f'{metric}_mean']:.3f} ± {x[f'{metric}_std']:.3f}", axis=1
+    )
+
+    # розкладаємо по колонках Logs-only / BPMN-based
+    summary = grouped.pivot(index="prefix_bin", columns="data_type", values="value").reset_index()
+
+    # перейменування
+    summary = summary.rename(columns={
+        "prefix_bin": "Префікс (довжина)",
+        "logs": "Logs-only",
+        "bpmn": "BPMN-based"
+    })
+
+    return summary
+
 def aggregate_prefix_statistics(directory_path: str) -> pd.DataFrame:
     """
     Агрегація статистики по всім архітектурам / data_type / seed.
